@@ -15,6 +15,9 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/manrope": "^5.2.8",
+    "material-symbols": "^0.44.2",
     "pinia": "^3.0.4",
     "vee-validate": "^4.15.1",
     "vue": "^3.5.30",
