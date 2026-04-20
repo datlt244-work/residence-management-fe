@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import { listApartments } from '@/services/apartment.service'
 import { getCurrentEmployee } from '@/services/employee.service'
-import { listProjectsManagement } from '@/services/project.service'
+import { deleteProject, listProjectsManagement } from '@/services/project.service'
 import type { ProjectManagementSidebarDto } from '@/types/project'
 import { aggregateBuckets, toPercentages } from '@/utils/apartmentStats'
 
 const auth = useAuthStore()
+const toast = useToast()
+const { confirm } = useConfirm()
 
 const loading = ref(true)
-const loadError = ref('')
 const projects = ref<ProjectManagementSidebarDto[]>([])
 const totalApartments = ref(0)
 const activeProjectCount = ref(0)
@@ -33,8 +36,7 @@ function formatInt(n: number) {
   return new Intl.NumberFormat('vi-VN').format(n)
 }
 
-onMounted(async () => {
-  loadError.value = ''
+async function loadDashboard() {
   loading.value = true
   try {
     const [me, tree, aptPage] = await Promise.all([
@@ -63,26 +65,39 @@ onMounted(async () => {
     }
     expandedProjectId.value = tree[0]?.id ?? null
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : 'Không tải được dữ liệu.'
+    toast.error(e instanceof Error ? e.message : 'Không tải được dữ liệu.')
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadDashboard()
 })
 
 function toggleProject(id: string) {
   expandedProjectId.value = expandedProjectId.value === id ? null : id
 }
+
+async function onDeleteProject(p: ProjectManagementSidebarDto) {
+  const ok = await confirm({
+    title: 'Xóa dự án',
+    message: `Xóa dự án "${p.name}" (${p.code})?\nChỉ thực hiện được khi không còn căn hộ thuộc dự án.`,
+  })
+  if (!ok) return
+  try {
+    await deleteProject(p.id)
+    toast.success('Đã xóa dự án thành công.')
+    if (expandedProjectId.value === p.id) expandedProjectId.value = null
+    await loadDashboard()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Xóa dự án thất bại.')
+  }
+}
 </script>
 
 <template>
   <div class="bg-background text-on-surface min-h-screen pb-28">
-    <p
-      v-if="loadError"
-      class="mx-4 mt-2 rounded-xl bg-error-container px-4 py-3 text-sm font-medium text-on-error-container"
-    >
-      {{ loadError }}
-    </p>
-
     <main class="max-w-7xl mx-auto space-y-6 px-4 pt-4">
       <div v-if="loading" class="rounded-3xl bg-surface-container-low p-8 text-center text-on-surface-variant">
         Đang tải dữ liệu…
@@ -217,7 +232,8 @@ function toggleProject(id: string) {
                       type="button"
                       class="material-symbols-outlined rounded p-1"
                       :class="expandedProjectId === project.id ? 'text-white/80' : 'text-outline hover:text-error'"
-                      title="Xóa (API)"
+                      aria-label="Xóa dự án"
+                      @click.stop="onDeleteProject(project)"
                     >
                       delete
                     </button>

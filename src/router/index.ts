@@ -45,7 +45,7 @@ const router = createRouter({
         {
           path: 'cai-dat',
           name: 'admin-settings',
-          component: () => import('../views/AdminPlaceholderView.vue'),
+          component: () => import('../views/AccountSettingsView.vue'),
           meta: { title: 'Cài đặt' },
         },
         {
@@ -57,7 +57,7 @@ const router = createRouter({
         {
           path: 'hr/nhan-vien',
           name: 'admin-hr-employees',
-          component: () => import('../views/AdminPlaceholderView.vue'),
+          component: () => import('../views/EmployeeManagementView.vue'),
           meta: { title: 'Nhân viên' },
         },
       ],

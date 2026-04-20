@@ -13,3 +13,10 @@ export async function listProjectsManagement(params?: {
   const json = await parseJsonResponse<ProjectManagementSidebarDto[]>(res)
   return json.data
 }
+
+export async function deleteProject(id: string): Promise<void> {
+  const res = await apiFetch(`/projects-management/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  await parseJsonResponse<unknown>(res)
+}
