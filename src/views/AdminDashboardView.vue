@@ -12,7 +12,8 @@ import {
   setProjectActive,
   updateProject,
 } from '@/services/project.service'
-import type { ProjectManagementSidebarDto } from '@/types/project'
+import { createZone, deleteZone, updateZone } from '@/services/zone.service'
+import type { ProjectManagementSidebarDto, ZoneSidebarDto } from '@/types/project'
 import { aggregateBuckets, toPercentages } from '@/utils/apartmentStats'
 
 const auth = useAuthStore()
@@ -41,6 +42,20 @@ const editFormCode = ref('')
 const editSubmitting = ref(false)
 
 const togglingProjectId = ref<string | null>(null)
+
+const showCreateZoneModal = ref(false)
+const zoneCreateProjectId = ref<string | null>(null)
+const createZoneFormName = ref('')
+const createZoneFormCode = ref('')
+const createZoneSubmitting = ref(false)
+
+const showEditZoneModal = ref(false)
+const editingZoneId = ref<string | null>(null)
+const zoneEditProjectId = ref<string | null>(null)
+const editZoneFormName = ref('')
+/** Chỉ hiển thị khi sửa — không gửi lên API. */
+const editZoneDisplayCode = ref('')
+const editZoneSubmitting = ref(false)
 
 function projectIsActive(p: ProjectManagementSidebarDto) {
   return String(p.status).toUpperCase() === 'ACTIVE'
@@ -202,6 +217,116 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
     await loadDashboard()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Xóa dự án thất bại.')
+  }
+}
+
+function openCreateZone(project: ProjectManagementSidebarDto) {
+  zoneCreateProjectId.value = project.id
+  createZoneFormName.value = ''
+  createZoneFormCode.value = ''
+  showCreateZoneModal.value = true
+}
+
+function closeCreateZone() {
+  showCreateZoneModal.value = false
+  zoneCreateProjectId.value = null
+}
+
+async function submitCreateZone() {
+  const projectId = zoneCreateProjectId.value
+  if (!projectId) return
+  const name = createZoneFormName.value.trim()
+  const code = createZoneFormCode.value.trim()
+  if (!name || !code) {
+    toast.error('Vui lòng nhập tên và mã phân khu.')
+    return
+  }
+  createZoneSubmitting.value = true
+  try {
+    const z = await createZone({ projectId, name, code })
+    const pi = projects.value.findIndex((p) => p.id === projectId)
+    if (pi !== -1) {
+      const p = projects.value[pi]
+      projects.value[pi] = {
+        ...p,
+        zones: [...p.zones, { ...z, apartmentTypes: z.apartmentTypes ?? [] }],
+      }
+    }
+    toast.success('Đã thêm phân khu.')
+    closeCreateZone()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Tạo phân khu thất bại.')
+  } finally {
+    createZoneSubmitting.value = false
+  }
+}
+
+function openEditZone(project: ProjectManagementSidebarDto, zone: ZoneSidebarDto) {
+  editingZoneId.value = zone.id
+  zoneEditProjectId.value = project.id
+  editZoneFormName.value = zone.name
+  editZoneDisplayCode.value = (zone.code ?? '').trim() || '—'
+  showEditZoneModal.value = true
+}
+
+function closeEditZone() {
+  showEditZoneModal.value = false
+  editingZoneId.value = null
+  zoneEditProjectId.value = null
+}
+
+async function submitEditZone() {
+  const zoneId = editingZoneId.value
+  const projectId = zoneEditProjectId.value
+  if (!zoneId || !projectId) return
+  const name = editZoneFormName.value.trim()
+  if (!name) {
+    toast.error('Vui lòng nhập tên phân khu.')
+    return
+  }
+  editZoneSubmitting.value = true
+  try {
+    const updated = await updateZone(zoneId, { name })
+    const pi = projects.value.findIndex((p) => p.id === projectId)
+    if (pi !== -1) {
+      const p = projects.value[pi]
+      const zi = p.zones.findIndex((z) => z.id === zoneId)
+      if (zi !== -1) {
+        const old = p.zones[zi]
+        const newZones = [...p.zones]
+        newZones[zi] = {
+          ...old,
+          ...updated,
+          apartmentTypes: updated.apartmentTypes ?? old.apartmentTypes,
+        }
+        projects.value[pi] = { ...p, zones: newZones }
+      }
+    }
+    toast.success('Đã cập nhật phân khu.')
+    closeEditZone()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Cập nhật phân khu thất bại.')
+  } finally {
+    editZoneSubmitting.value = false
+  }
+}
+
+async function onDeleteZone(project: ProjectManagementSidebarDto, zone: ZoneSidebarDto) {
+  const ok = await confirm({
+    title: 'Xóa phân khu',
+    message: `Xóa phân khu "${zone.name}"${zone.code ? ` (${zone.code})` : ''}?\nChỉ thực hiện được khi không còn dữ liệu phụ thuộc.`,
+  })
+  if (!ok) return
+  try {
+    await deleteZone(zone.id)
+    const pi = projects.value.findIndex((p) => p.id === project.id)
+    if (pi !== -1) {
+      const p = projects.value[pi]
+      projects.value[pi] = { ...p, zones: p.zones.filter((z) => z.id !== zone.id) }
+    }
+    toast.success('Đã xóa phân khu.')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Xóa phân khu thất bại.')
   }
 }
 </script>
@@ -387,6 +512,16 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
                 </div>
 
                 <div v-if="expandedProjectId === project.id" class="space-y-2 p-3">
+                  <div class="flex justify-end">
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
+                      @click="openCreateZone(project)"
+                    >
+                      <span class="material-symbols-outlined text-[16px]">add</span>
+                      Thêm phân khu
+                    </button>
+                  </div>
                   <div
                     v-for="zone in project.zones"
                     :key="zone.id"
@@ -402,8 +537,23 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
                         >
                       </div>
                       <div class="flex items-center gap-1">
-                        <button type="button" class="material-symbols-outlined p-1 text-xs text-primary">edit</button>
-                        <button type="button" class="material-symbols-outlined p-1 text-xs text-error">delete</button>
+                        <button
+                          type="button"
+                          class="material-symbols-outlined p-1 text-xs text-primary"
+                          title="Sửa phân khu"
+                          aria-label="Sửa phân khu"
+                          @click.stop="openEditZone(project, zone)"
+                        >
+                          edit
+                        </button>
+                        <button
+                          type="button"
+                          class="material-symbols-outlined p-1 text-xs text-error"
+                          aria-label="Xóa phân khu"
+                          @click.stop="onDeleteZone(project, zone)"
+                        >
+                          delete
+                        </button>
                       </div>
                     </div>
                     <div class="mt-2 grid grid-cols-2 gap-2">
@@ -594,6 +744,114 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
               :disabled="editSubmitting"
             >
               {{ editSubmitting ? 'Đang lưu…' : 'Lưu' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      v-if="showCreateZoneModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-zone-title"
+      @click.self="closeCreateZone"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="create-zone-title" class="font-headline text-lg font-bold text-on-surface">Thêm phân khu</h2>
+        <form class="mt-4 space-y-3" @submit.prevent="submitCreateZone">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Tên phân khu</label>
+            <input
+              v-model="createZoneFormName"
+              type="text"
+              required
+              maxlength="200"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Mã phân khu</label>
+            <input
+              v-model="createZoneFormCode"
+              type="text"
+              required
+              maxlength="50"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+            />
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-semibold text-on-surface-variant"
+              @click="closeCreateZone"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-60"
+              :disabled="createZoneSubmitting"
+            >
+              {{ createZoneSubmitting ? 'Đang tạo…' : 'Tạo' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      v-if="showEditZoneModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-zone-title"
+      @click.self="closeEditZone"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="edit-zone-title" class="font-headline text-lg font-bold text-on-surface">Sửa phân khu</h2>
+        <form class="mt-4 space-y-3" @submit.prevent="submitEditZone">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Tên phân khu</label>
+            <input
+              v-model="editZoneFormName"
+              type="text"
+              required
+              maxlength="200"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Mã phân khu</label>
+            <p
+              class="rounded-xl border border-outline-variant/20 bg-surface-container-low/80 px-3 py-2 text-sm text-on-surface-variant"
+              title="Mã không thể đổi sau khi tạo"
+            >
+              {{ editZoneDisplayCode }}
+            </p>
+            <p class="mt-1 text-[11px] text-on-surface-variant">Mã cố định sau khi tạo.</p>
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-semibold text-on-surface-variant"
+              @click="closeEditZone"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-60"
+              :disabled="editZoneSubmitting"
+            >
+              {{ editZoneSubmitting ? 'Đang lưu…' : 'Lưu' }}
             </button>
           </div>
         </form>

@@ -217,161 +217,169 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 pb-28 pt-4">
-    <div class="mb-6 space-y-4">
-      <RouterLink
-        class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
-        :to="{ name: 'admin-dashboard' }"
+  <div class="bg-background text-on-surface min-h-screen pb-28">
+    <main class="mx-auto max-w-7xl space-y-6 px-4 pt-4">
+      <div class="space-y-4">
+        <RouterLink
+          class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary-container"
+          :to="{ name: 'admin-dashboard' }"
+        >
+          <span class="material-symbols-outlined text-xl">arrow_back</span>
+          Quay lại
+        </RouterLink>
+        <div>
+          <h1 class="font-headline text-2xl font-extrabold tracking-tight text-on-surface">Nhân viên</h1>
+          <p class="text-sm text-on-surface-variant">Quản lý nhân viên (admin).</p>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Tìm kiếm</label
+            >
+            <input
+              v-model="filterSearch"
+              type="text"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="Tên, email, SĐT…"
+              @keyup.enter="applyFilters"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Vai trò</label
+            >
+            <select
+              v-model="filterRole"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Tất cả</option>
+              <option v-for="r in roleOptions" :key="r" :value="r">{{ r }}</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Trạng thái</label
+            >
+            <select
+              v-model="filterActive"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="all">Tất cả</option>
+              <option value="true">Đang hoạt động</option>
+              <option value="false">Ngưng</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
+            @click="clearFilters"
+          >
+            <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
+            Xóa bộ lọc
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
+            @click="applyFilters"
+          >
+            Áp dụng lọc
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container-lowest shadow-sm">
+        <div v-if="loading" class="p-8 text-center text-on-surface-variant">Đang tải…</div>
+        <table v-else class="w-full text-left text-sm">
+          <thead class="border-b border-outline-variant/20 bg-surface-container-low">
+            <tr>
+              <th class="px-4 py-3 font-semibold text-on-surface-variant">Họ tên</th>
+              <th class="hidden px-4 py-3 font-semibold text-on-surface-variant sm:table-cell">Email</th>
+              <th class="px-4 py-3 font-semibold text-on-surface-variant">Vai trò</th>
+              <th class="px-4 py-3 font-semibold text-on-surface-variant">Hoạt động</th>
+              <th class="w-28 px-2 py-3 text-right" aria-hidden="true" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id" class="border-b border-outline-variant/10 last:border-0">
+              <td class="px-4 py-3 font-medium text-on-surface">{{ row.fullName }}</td>
+              <td class="hidden px-4 py-3 text-on-surface-variant sm:table-cell">{{ row.email }}</td>
+              <td class="px-4 py-3 text-xs">{{ row.roleDisplayName || row.role }}</td>
+              <td class="px-4 py-2">
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="row.active"
+                  :aria-busy="togglingId === row.id"
+                  :disabled="togglingId === row.id"
+                  class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+                  :class="row.active ? 'bg-primary' : 'bg-outline-variant/50'"
+                  :title="row.active ? 'Đang hoạt động — bấm để ngưng' : 'Đang ngưng — bấm để kích hoạt'"
+                  @click="toggleActive(row)"
+                >
+                  <span
+                    class="pointer-events-none absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200"
+                    :class="row.active ? 'translate-x-5' : 'translate-x-0'"
+                  />
+                </button>
+              </td>
+              <td class="px-2 py-2 text-right">
+                <div class="inline-flex justify-end gap-1">
+                  <button
+                    type="button"
+                    class="rounded-lg p-2 text-primary transition-colors hover:bg-surface-container-low"
+                    aria-label="Sửa"
+                    @click="openEdit(row)"
+                  >
+                    <span class="material-symbols-outlined text-xl">edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg p-2 text-error transition-colors hover:bg-error-container/30"
+                    aria-label="Xóa"
+                    @click="onDelete(row)"
+                  >
+                    <span class="material-symbols-outlined text-xl">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length">
+              <td colspan="5" class="px-4 py-8 text-center text-on-surface-variant">Không có dữ liệu.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        v-if="totalPages > 1 || totalElements > 0"
+        class="flex flex-wrap items-center justify-between gap-2 text-sm text-on-surface-variant"
       >
-        <span class="material-symbols-outlined text-xl">arrow_back</span>
-        Quay lại
-      </RouterLink>
-      <div>
-        <h1 class="font-headline text-2xl font-extrabold text-on-surface">Nhân viên</h1>
-        <p class="text-sm text-on-surface-variant">Quản lý nhân viên (admin).</p>
-      </div>
-    </div>
-
-    <div class="mb-4 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Tìm kiếm</label>
-          <input
-            v-model="filterSearch"
-            type="text"
-            class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm"
-            placeholder="Tên, email, SĐT…"
-            @keyup.enter="applyFilters"
-          />
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Vai trò</label>
-          <select
-            v-model="filterRole"
-            class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm"
+        <span>Tổng {{ totalElements }} — Trang {{ page + 1 }} / {{ totalPages || 1 }}</span>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
+            :disabled="page <= 0 || loading"
+            @click="goPrev"
           >
-            <option value="">Tất cả</option>
-            <option v-for="r in roleOptions" :key="r" :value="r">{{ r }}</option>
-          </select>
-        </div>
-        <div>
-          <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Trạng thái</label>
-          <select
-            v-model="filterActive"
-            class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm"
+            Trước
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
+            :disabled="page >= totalPages - 1 || loading || totalPages <= 1"
+            @click="goNext"
           >
-            <option value="all">Tất cả</option>
-            <option value="true">Đang hoạt động</option>
-            <option value="false">Ngưng</option>
-          </select>
+            Sau
+          </button>
         </div>
       </div>
-      <div class="mt-3 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
-          @click="clearFilters"
-        >
-          <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
-          Xóa bộ lọc
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
-          @click="applyFilters"
-        >
-          Áp dụng lọc
-        </button>
-      </div>
-    </div>
-
-    <div class="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container-lowest shadow-sm">
-      <div v-if="loading" class="p-8 text-center text-on-surface-variant">Đang tải…</div>
-      <table v-else class="w-full text-left text-sm">
-        <thead class="border-b border-outline-variant/20 bg-surface-container-low">
-          <tr>
-            <th class="px-3 py-3 font-semibold text-on-surface-variant">Họ tên</th>
-            <th class="hidden px-3 py-3 font-semibold text-on-surface-variant sm:table-cell">Email</th>
-            <th class="px-3 py-3 font-semibold text-on-surface-variant">Vai trò</th>
-            <th class="px-3 py-3 font-semibold text-on-surface-variant">Hoạt động</th>
-            <th class="w-28 px-2 py-3 text-right" aria-hidden="true" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id" class="border-b border-outline-variant/10 last:border-0">
-            <td class="px-3 py-3 font-medium text-on-surface">{{ row.fullName }}</td>
-            <td class="hidden px-3 py-3 text-on-surface-variant sm:table-cell">{{ row.email }}</td>
-            <td class="px-3 py-3 text-xs">{{ row.roleDisplayName || row.role }}</td>
-            <td class="px-3 py-2">
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="row.active"
-                :aria-busy="togglingId === row.id"
-                :disabled="togglingId === row.id"
-                class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
-                :class="row.active ? 'bg-primary' : 'bg-outline-variant/50'"
-                :title="row.active ? 'Đang hoạt động — bấm để ngưng' : 'Đang ngưng — bấm để kích hoạt'"
-                @click="toggleActive(row)"
-              >
-                <span
-                  class="pointer-events-none absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200"
-                  :class="row.active ? 'translate-x-5' : 'translate-x-0'"
-                />
-              </button>
-            </td>
-            <td class="px-2 py-2 text-right">
-              <div class="inline-flex justify-end gap-1">
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-primary hover:bg-surface-container-low"
-                  aria-label="Sửa"
-                  @click="openEdit(row)"
-                >
-                  <span class="material-symbols-outlined text-xl">edit</span>
-                </button>
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-error hover:bg-error-container/30"
-                  aria-label="Xóa"
-                  @click="onDelete(row)"
-                >
-                  <span class="material-symbols-outlined text-xl">delete</span>
-                </button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="!rows.length">
-            <td colspan="5" class="px-4 py-8 text-center text-on-surface-variant">Không có dữ liệu.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div
-      v-if="totalPages > 1 || totalElements > 0"
-      class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-on-surface-variant"
-    >
-      <span>Tổng {{ totalElements }} — Trang {{ page + 1 }} / {{ totalPages || 1 }}</span>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
-          :disabled="page <= 0 || loading"
-          @click="goPrev"
-        >
-          Trước
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
-          :disabled="page >= totalPages - 1 || loading || totalPages <= 1"
-          @click="goNext"
-        >
-          Sau
-        </button>
-      </div>
-    </div>
+    </main>
 
     <div
       v-if="showModal"

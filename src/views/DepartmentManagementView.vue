@@ -159,32 +159,33 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 pb-28 pt-4">
-    <div class="mb-6 space-y-4">
-      <RouterLink
-        class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary-container"
-        :to="{ name: 'admin-dashboard' }"
-      >
-        <span class="material-symbols-outlined text-xl">arrow_back</span>
-        Quay lại
-      </RouterLink>
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="font-headline text-2xl font-extrabold tracking-tight text-on-surface">Phòng ban</h1>
-        <p class="text-sm text-on-surface-variant">Quản lý danh mục phòng ban.</p>
+  <div class="bg-background text-on-surface min-h-screen pb-28">
+    <main class="mx-auto max-w-7xl space-y-6 px-4 pt-4">
+      <div class="space-y-4">
+        <RouterLink
+          class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary transition-colors hover:text-primary-container"
+          :to="{ name: 'admin-dashboard' }"
+        >
+          <span class="material-symbols-outlined text-xl">arrow_back</span>
+          Quay lại
+        </RouterLink>
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 class="font-headline text-2xl font-extrabold tracking-tight text-on-surface">Phòng ban</h1>
+            <p class="text-sm text-on-surface-variant">Quản lý danh mục phòng ban.</p>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-gradient-to-br from-primary to-primary-container px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-transform active:scale-[0.98]"
+            @click="openCreate"
+          >
+            Thêm phòng ban
+          </button>
+        </div>
       </div>
-      <button
-        type="button"
-        class="rounded-xl bg-gradient-to-br from-primary to-primary-container px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary/20 transition-transform active:scale-[0.98]"
-        @click="openCreate"
-      >
-        Thêm phòng ban
-      </button>
-      </div>
-    </div>
 
-    <div class="mb-4 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Mã</label>
           <input
@@ -225,94 +226,95 @@ onMounted(() => {
             class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
+        </div>
+        <div class="mt-3 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
+            @click="clearFilters"
+          >
+            <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
+            Xóa bộ lọc
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
+            @click="applyFilters"
+          >
+            Áp dụng lọc
+          </button>
+        </div>
       </div>
-      <div class="mt-3 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
-          @click="clearFilters"
-        >
-          <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
-          Xóa bộ lọc
-        </button>
-        <button
-          type="button"
-          class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
-          @click="applyFilters"
-        >
-          Áp dụng lọc
-        </button>
-      </div>
-    </div>
 
-    <div class="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container-lowest shadow-sm">
-      <div v-if="loading" class="p-8 text-center text-on-surface-variant">Đang tải…</div>
-      <table v-else class="w-full text-left text-sm">
-        <thead class="border-b border-outline-variant/20 bg-surface-container-low">
-          <tr>
-            <th class="px-4 py-3 font-semibold text-on-surface-variant">Mã</th>
-            <th class="px-4 py-3 font-semibold text-on-surface-variant">Tên</th>
-            <th class="hidden px-4 py-3 font-semibold text-on-surface-variant md:table-cell">Tạo lúc</th>
-            <th class="w-24 px-2 py-3 text-right" aria-hidden="true" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id" class="border-b border-outline-variant/10 last:border-0">
-            <td class="px-4 py-3 font-mono text-xs text-on-surface">{{ row.code }}</td>
-            <td class="px-4 py-3 font-medium text-on-surface">{{ row.name }}</td>
-            <td class="hidden px-4 py-3 text-on-surface-variant md:table-cell">{{ formatDt(row.createdAt) }}</td>
-            <td class="px-2 py-2 text-right">
-              <div class="inline-flex items-center justify-end gap-1">
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-primary transition-colors hover:bg-surface-container-low"
-                  aria-label="Sửa"
-                  @click="openEdit(row)"
-                >
-                  <span class="material-symbols-outlined text-xl">edit</span>
-                </button>
-                <button
-                  type="button"
-                  class="rounded-lg p-2 text-error transition-colors hover:bg-error-container/30"
-                  aria-label="Xóa"
-                  @click="onDelete(row)"
-                >
-                  <span class="material-symbols-outlined text-xl">delete</span>
-                </button>
-              </div>
-            </td>
-          </tr>
-          <tr v-if="!rows.length">
-            <td colspan="4" class="px-4 py-8 text-center text-on-surface-variant">Không có dữ liệu.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div
-      v-if="totalPages > 1 || totalElements > 0"
-      class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-on-surface-variant"
-    >
-      <span>Tổng {{ totalElements }} — Trang {{ page + 1 }} / {{ totalPages || 1 }}</span>
-      <div class="flex gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
-          :disabled="page <= 0 || loading"
-          @click="goPrev"
-        >
-          Trước
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
-          :disabled="page >= totalPages - 1 || loading || totalPages <= 1"
-          @click="goNext"
-        >
-          Sau
-        </button>
+      <div class="overflow-hidden rounded-2xl border border-outline-variant/15 bg-surface-container-lowest shadow-sm">
+        <div v-if="loading" class="p-8 text-center text-on-surface-variant">Đang tải…</div>
+        <table v-else class="w-full text-left text-sm">
+          <thead class="border-b border-outline-variant/20 bg-surface-container-low">
+            <tr>
+              <th class="px-4 py-3 font-semibold text-on-surface-variant">Mã</th>
+              <th class="px-4 py-3 font-semibold text-on-surface-variant">Tên</th>
+              <th class="hidden px-4 py-3 font-semibold text-on-surface-variant md:table-cell">Tạo lúc</th>
+              <th class="w-24 px-2 py-3 text-right" aria-hidden="true" />
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="row.id" class="border-b border-outline-variant/10 last:border-0">
+              <td class="px-4 py-3 font-mono text-xs text-on-surface">{{ row.code }}</td>
+              <td class="px-4 py-3 font-medium text-on-surface">{{ row.name }}</td>
+              <td class="hidden px-4 py-3 text-on-surface-variant md:table-cell">{{ formatDt(row.createdAt) }}</td>
+              <td class="px-2 py-2 text-right">
+                <div class="inline-flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    class="rounded-lg p-2 text-primary transition-colors hover:bg-surface-container-low"
+                    aria-label="Sửa"
+                    @click="openEdit(row)"
+                  >
+                    <span class="material-symbols-outlined text-xl">edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-lg p-2 text-error transition-colors hover:bg-error-container/30"
+                    aria-label="Xóa"
+                    @click="onDelete(row)"
+                  >
+                    <span class="material-symbols-outlined text-xl">delete</span>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!rows.length">
+              <td colspan="4" class="px-4 py-8 text-center text-on-surface-variant">Không có dữ liệu.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-    </div>
+
+      <div
+        v-if="totalPages > 1 || totalElements > 0"
+        class="flex flex-wrap items-center justify-between gap-2 text-sm text-on-surface-variant"
+      >
+        <span>Tổng {{ totalElements }} — Trang {{ page + 1 }} / {{ totalPages || 1 }}</span>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
+            :disabled="page <= 0 || loading"
+            @click="goPrev"
+          >
+            Trước
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-3 py-1.5 font-medium disabled:opacity-40"
+            :disabled="page >= totalPages - 1 || loading || totalPages <= 1"
+            @click="goNext"
+          >
+            Sau
+          </button>
+        </div>
+      </div>
+    </main>
 
     <!-- Modal -->
     <div
