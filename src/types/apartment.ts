@@ -1,0 +1,30 @@
+export interface ApartmentListItemDto {
+  id: string
+  projectId?: string
+  projectCode?: string
+  projectName?: string
+  zoneId?: string
+  zoneCode?: string
+  zoneName?: string
+  apartmentTypeId?: string
+  apartmentTypeCode?: string
+  apartmentTypeName?: string
+  code?: string
+  area?: number
+  price?: number
+  taxFee?: number
+  furnitureStatus?: string
+  legalStatus?: string
+  balconyDirection?: string
+  status?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface PageResultApartmentListItemDto {
+  content: ApartmentListItemDto[]
+  pageNumber: number
+  pageSize: number
+  totalElements: number
+  totalPages: number
+}

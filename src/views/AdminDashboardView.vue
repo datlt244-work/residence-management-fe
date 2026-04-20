@@ -1,27 +1,339 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { listApartments } from '@/services/apartment.service'
+import { getCurrentEmployee } from '@/services/employee.service'
+import { listProjectsManagement } from '@/services/project.service'
+import type { ProjectManagementSidebarDto } from '@/types/project'
+import { aggregateBuckets, toPercentages } from '@/utils/apartmentStats'
 
 const auth = useAuthStore()
+
+const loading = ref(true)
+const loadError = ref('')
+const projects = ref<ProjectManagementSidebarDto[]>([])
+const totalApartments = ref(0)
+const activeProjectCount = ref(0)
+/** Phần trăm ước lượng theo mẫu tối đa 100 căn (API không có thống kê theo loại). */
+const barCondo = ref(45)
+const barShop = ref(30)
+const barVilla = ref(25)
+const expandedProjectId = ref<string | null>(null)
+
+function greeting(): string {
+  const h = new Date().getHours()
+  if (h >= 5 && h < 12) return 'Chào buổi sáng'
+  if (h >= 12 && h < 18) return 'Chào buổi chiều'
+  return 'Chào buổi tối'
+}
+
+const displayName = computed(() => auth.user?.fullName?.trim() || auth.user?.email || 'Quản trị viên')
+
+function formatInt(n: number) {
+  return new Intl.NumberFormat('vi-VN').format(n)
+}
+
+onMounted(async () => {
+  loadError.value = ''
+  loading.value = true
+  try {
+    const [me, tree, aptPage] = await Promise.all([
+      getCurrentEmployee(),
+      listProjectsManagement(),
+      listApartments({ page: 0, size: 100 }),
+    ])
+    auth.setUser(me)
+    projects.value = tree
+    activeProjectCount.value = tree.filter((p) => p.status === 'ACTIVE').length
+    totalApartments.value = aptPage.totalElements
+    const names = aptPage.content.map((a) => a.apartmentTypeName)
+    const counts = aggregateBuckets(names)
+    const mergedCondo = counts.condo + counts.other
+    const t = mergedCondo + counts.shophouse + counts.villa
+    if (t > 0) {
+      const p = toPercentages({
+        condo: mergedCondo,
+        shophouse: counts.shophouse,
+        villa: counts.villa,
+        other: 0,
+      })
+      barCondo.value = p.condo
+      barShop.value = p.shophouse
+      barVilla.value = p.villa
+    }
+    expandedProjectId.value = tree[0]?.id ?? null
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : 'Không tải được dữ liệu.'
+  } finally {
+    loading.value = false
+  }
+})
+
+function toggleProject(id: string) {
+  expandedProjectId.value = expandedProjectId.value === id ? null : id
+}
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl px-6 py-10">
-    <h1 class="font-headline text-3xl font-extrabold tracking-tight text-on-surface">
-      Bảng điều khiển
-    </h1>
-    <p class="mt-2 text-on-surface-variant">
-      Đăng nhập quản trị thành công. Bạn có thể mở rộng các module quản lý cư trú và bất động sản tại đây.
-    </p>
-    <div
-      v-if="auth.user"
-      class="mt-8 rounded-xl border border-outline-variant/25 bg-surface-container-low p-6"
+  <div class="bg-background text-on-surface min-h-screen pb-28">
+    <p
+      v-if="loadError"
+      class="mx-4 mt-2 rounded-xl bg-error-container px-4 py-3 text-sm font-medium text-on-error-container"
     >
-      <p class="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Phiên hiện tại</p>
-      <p class="mt-2 text-lg font-semibold text-on-surface">{{ auth.user.fullName || '—' }}</p>
-      <p class="mt-1 text-sm text-on-surface-variant">
-        <span class="font-medium text-on-surface">Địa chỉ thư điện tử:</span>
-        {{ auth.user.email }}
-      </p>
-    </div>
+      {{ loadError }}
+    </p>
+
+    <main class="max-w-7xl mx-auto space-y-6 px-4 pt-4">
+      <div v-if="loading" class="rounded-3xl bg-surface-container-low p-8 text-center text-on-surface-variant">
+        Đang tải dữ liệu…
+      </div>
+
+      <template v-else>
+        <!-- Welcome + stat -->
+        <section class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="relative overflow-hidden rounded-3xl bg-surface-container-low p-6 md:col-span-2">
+            <div class="relative z-10">
+              <h2 class="mb-2 text-2xl font-extrabold tracking-tight text-primary font-headline">
+                {{ greeting() }}, {{ displayName }}
+              </h2>
+              <p class="text-sm font-medium text-on-surface-variant">
+                Hệ thống đang quản lý
+                <strong class="text-on-surface">{{ formatInt(totalApartments) }}</strong>
+                căn hộ trên
+                <strong class="text-on-surface">{{ activeProjectCount }}</strong>
+                dự án đang hoạt động.
+              </p>
+            </div>
+            <div class="pointer-events-none absolute bottom-0 right-0 opacity-10">
+              <span class="material-symbols-outlined text-[120px]" style="font-variation-settings: 'FILL' 1"
+                >domain</span
+              >
+            </div>
+          </div>
+          <div class="flex flex-col justify-between rounded-3xl bg-primary p-6 text-white shadow-lg">
+            <div class="flex items-start justify-between">
+              <span class="material-symbols-outlined rounded-xl bg-white/20 p-2">analytics</span>
+              <span class="text-xs font-bold uppercase tracking-widest opacity-80">Tổng quan</span>
+            </div>
+            <div>
+              <div class="text-3xl font-black">{{ formatInt(totalApartments) }}</div>
+              <div class="text-xs opacity-70">Căn hộ trong danh mục (theo API)</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- HR + inventory groups -->
+        <div class="space-y-4">
+          <div class="rounded-2xl bg-surface-container-lowest p-4 shadow-sm">
+            <div class="mb-4 flex items-center gap-2 px-2">
+              <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1"
+                >groups</span
+              >
+              <h3 class="font-headline text-sm font-bold uppercase tracking-wider text-on-surface">
+                Quản lý nhân sự
+              </h3>
+            </div>
+            <div class="space-y-1">
+              <RouterLink
+                class="flex w-full items-center justify-between rounded-xl p-3 transition-all hover:bg-surface-container-low"
+                :to="{ name: 'admin-hr-departments' }"
+              >
+                <div class="flex items-center gap-3">
+                  <span class="material-symbols-outlined text-outline">corporate_fare</span>
+                  <span class="font-medium text-on-surface-variant">Phòng ban</span>
+                </div>
+                <span class="material-symbols-outlined text-outline-variant">chevron_right</span>
+              </RouterLink>
+              <RouterLink
+                class="flex w-full items-center justify-between rounded-xl p-3 transition-all hover:bg-surface-container-low"
+                :to="{ name: 'admin-hr-employees' }"
+              >
+                <div class="flex items-center gap-3">
+                  <span class="material-symbols-outlined text-outline">badge</span>
+                  <span class="font-medium text-on-surface-variant">Nhân viên</span>
+                </div>
+                <span class="material-symbols-outlined text-outline-variant">chevron_right</span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- Projects tree -->
+          <div class="rounded-3xl bg-surface-container-lowest p-4 shadow-sm">
+            <div class="mb-4 flex items-center justify-between px-2">
+              <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1"
+                  >inventory_2</span
+                >
+                <h3 class="font-headline text-sm font-bold uppercase tracking-wider text-on-surface">
+                  Quản lý bảng hàng
+                </h3>
+              </div>
+              <button
+                type="button"
+                class="material-symbols-outlined rounded-lg bg-surface-container-high p-1 text-primary"
+                title="Thêm dự án (API: POST /projects-management)"
+              >
+                add
+              </button>
+            </div>
+
+            <div v-if="projects.length === 0" class="px-2 py-6 text-center text-sm text-on-surface-variant">
+              Chưa có dự án. Tạo dự án từ backend hoặc gọi API tạo mới.
+            </div>
+
+            <div v-else class="space-y-3">
+              <div
+                v-for="project in projects"
+                :key="project.id"
+                class="overflow-hidden rounded-2xl bg-surface-container-highest"
+              >
+                <div
+                  class="flex items-center justify-between p-4"
+                  :class="expandedProjectId === project.id ? 'bg-primary text-white' : 'bg-surface-container-low'"
+                >
+                  <div class="flex min-w-0 items-center gap-3">
+                    <span
+                      class="material-symbols-outlined shrink-0 cursor-move"
+                      :class="expandedProjectId === project.id ? 'text-white/50' : 'text-outline-variant'"
+                      >drag_indicator</span
+                    >
+                    <span class="truncate font-bold">{{ project.name }}</span>
+                    <span
+                      class="hidden text-xs opacity-70 sm:inline"
+                      :class="expandedProjectId === project.id ? 'text-white/80' : 'text-on-surface-variant'"
+                      >({{ project.code }})</span
+                    >
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      class="material-symbols-outlined rounded p-1"
+                      :class="expandedProjectId === project.id ? 'text-white/80 hover:text-white' : 'text-outline hover:text-primary'"
+                      title="Cập nhật (API)"
+                    >
+                      edit
+                    </button>
+                    <button
+                      type="button"
+                      class="material-symbols-outlined rounded p-1"
+                      :class="expandedProjectId === project.id ? 'text-white/80' : 'text-outline hover:text-error'"
+                      title="Xóa (API)"
+                    >
+                      delete
+                    </button>
+                    <button
+                      type="button"
+                      class="material-symbols-outlined"
+                      :class="expandedProjectId === project.id ? '' : 'text-outline'"
+                      @click="toggleProject(project.id)"
+                    >
+                      {{ expandedProjectId === project.id ? 'expand_less' : 'expand_more' }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="expandedProjectId === project.id" class="space-y-2 p-3">
+                  <div
+                    v-for="zone in project.zones"
+                    :key="zone.id"
+                    class="rounded-xl bg-white/40 p-3 dark:bg-white/5"
+                  >
+                    <div class="mb-2 flex items-center justify-between">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <span class="material-symbols-outlined cursor-move text-xs text-outline-variant"
+                          >drag_indicator</span
+                        >
+                        <span class="text-xs font-bold uppercase tracking-tight text-on-surface-variant"
+                          >Phân khu: {{ zone.name }}</span
+                        >
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <button type="button" class="material-symbols-outlined p-1 text-xs text-primary">edit</button>
+                        <button type="button" class="material-symbols-outlined p-1 text-xs text-error">delete</button>
+                      </div>
+                    </div>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                      <div
+                        v-for="apt in zone.apartmentTypes"
+                        :key="apt.id"
+                        class="flex items-center justify-between rounded-lg border border-outline-variant/10 bg-white p-2 dark:bg-surface-container-lowest"
+                      >
+                        <span class="text-xs font-semibold">{{ apt.name }}</span>
+                        <span class="material-symbols-outlined text-[14px] text-outline">drag_indicator</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- System -->
+          <div class="rounded-2xl bg-surface-container-lowest p-4 shadow-sm">
+            <div class="mb-4 flex items-center gap-2 px-2">
+              <span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1"
+                >settings</span
+              >
+              <h3 class="font-headline text-sm font-bold uppercase tracking-wider text-on-surface">
+                Quản lý hệ thống
+              </h3>
+            </div>
+            <div class="no-scrollbar flex gap-2 overflow-x-auto px-2">
+              <span
+                class="whitespace-nowrap rounded-full border border-outline-variant/15 bg-surface-container-low px-4 py-2 text-xs font-bold text-on-surface-variant"
+                >Phân quyền</span
+              >
+              <span
+                class="whitespace-nowrap rounded-full border border-outline-variant/15 bg-surface-container-low px-4 py-2 text-xs font-bold text-on-surface-variant"
+                >Lịch sử Audit</span
+              >
+              <span
+                class="whitespace-nowrap rounded-full border border-outline-variant/15 bg-surface-container-low px-4 py-2 text-xs font-bold text-on-surface-variant"
+                >API</span
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Inventory summary -->
+        <div class="rounded-3xl border border-outline-variant/5 bg-surface-container-lowest p-6">
+          <div class="mb-6 flex items-end justify-between">
+            <div>
+              <h3 class="mb-1 text-sm font-bold uppercase tracking-widest text-outline">Tổng sản phẩm</h3>
+              <div class="text-4xl font-black text-primary">{{ formatInt(totalApartments) }}</div>
+            </div>
+            <div
+              class="rounded-full bg-tertiary-container px-3 py-1 text-[10px] font-bold uppercase tracking-tighter text-white"
+            >
+              Mẫu: tối đa 100 căn
+            </div>
+          </div>
+          <p class="mb-4 text-xs text-on-surface-variant">
+            Tỷ lệ loại căn ước lượng theo tên loại trong trang đầu (API không có báo cáo tổng hợp).
+          </p>
+          <div class="space-y-4">
+            <div class="flex h-2 w-full overflow-hidden rounded-full bg-surface-container-low">
+              <div class="h-full bg-primary" :style="{ width: `${barCondo}%` }" />
+              <div class="h-full bg-tertiary" :style="{ width: `${barShop}%` }" />
+              <div class="h-full bg-secondary" :style="{ width: `${barVilla}%` }" />
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="flex items-center gap-2">
+                <div class="h-2 w-2 rounded-full bg-primary" />
+                <span class="text-[10px] font-bold text-on-surface-variant">Chung cư + khác</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="h-2 w-2 rounded-full bg-tertiary" />
+                <span class="text-[10px] font-bold text-on-surface-variant">Shophouse</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="h-2 w-2 rounded-full bg-secondary" />
+                <span class="text-[10px] font-bold text-on-surface-variant">Villas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </main>
   </div>
 </template>

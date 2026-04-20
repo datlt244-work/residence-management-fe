@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { AuthUser, LoginData } from '@/types/auth'
+import type { LoginResponseDto } from '@/types/auth'
+import type { EmployeeDto } from '@/types/employee'
 
 const TOKEN_KEY = 'access_token'
 
@@ -24,15 +25,19 @@ function clearStoredToken() {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<AuthUser | null>(null)
+  const user = ref<EmployeeDto | null>(null)
   const accessToken = ref<string | null>(readTokenFromStorage())
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
-  function setLoginData(data: LoginData, remember: boolean) {
-    user.value = data.user
+  function setLoginData(data: LoginResponseDto, remember: boolean) {
+    user.value = data.employee
     accessToken.value = data.accessToken
     persistToken(data.accessToken, remember)
+  }
+
+  function setUser(employee: EmployeeDto | null) {
+    user.value = employee
   }
 
   function logout() {
@@ -41,5 +46,5 @@ export const useAuthStore = defineStore('auth', () => {
     clearStoredToken()
   }
 
-  return { user, accessToken, isAuthenticated, setLoginData, logout }
+  return { user, accessToken, isAuthenticated, setLoginData, setUser, logout }
 })
