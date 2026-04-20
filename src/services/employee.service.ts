@@ -1,6 +1,5 @@
 import { apiFetch, parseJsonResponse } from '@/utils/http'
 import type {
-  AdminEmployeeDto,
   ChangePasswordRequest,
   EmployeeAdminDetailDto,
   EmployeeDto,
