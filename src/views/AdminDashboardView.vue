@@ -5,7 +5,13 @@ import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import { listApartments } from '@/services/apartment.service'
 import { getCurrentEmployee } from '@/services/employee.service'
-import { deleteProject, listProjectsManagement } from '@/services/project.service'
+import {
+  createProject,
+  deleteProject,
+  listProjectsManagement,
+  setProjectActive,
+  updateProject,
+} from '@/services/project.service'
 import type { ProjectManagementSidebarDto } from '@/types/project'
 import { aggregateBuckets, toPercentages } from '@/utils/apartmentStats'
 
@@ -22,6 +28,23 @@ const barCondo = ref(45)
 const barShop = ref(30)
 const barVilla = ref(25)
 const expandedProjectId = ref<string | null>(null)
+
+const showCreateProjectModal = ref(false)
+const createFormName = ref('')
+const createFormCode = ref('')
+const createSubmitting = ref(false)
+
+const showEditProjectModal = ref(false)
+const editingProjectId = ref<string | null>(null)
+const editFormName = ref('')
+const editFormCode = ref('')
+const editSubmitting = ref(false)
+
+const togglingProjectId = ref<string | null>(null)
+
+function projectIsActive(p: ProjectManagementSidebarDto) {
+  return String(p.status).toUpperCase() === 'ACTIVE'
+}
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -77,6 +100,93 @@ onMounted(() => {
 
 function toggleProject(id: string) {
   expandedProjectId.value = expandedProjectId.value === id ? null : id
+}
+
+function openCreateProject() {
+  createFormName.value = ''
+  createFormCode.value = ''
+  showCreateProjectModal.value = true
+}
+
+function closeCreateProject() {
+  showCreateProjectModal.value = false
+}
+
+function openEditProject(p: ProjectManagementSidebarDto) {
+  editingProjectId.value = p.id
+  editFormName.value = p.name
+  editFormCode.value = p.code
+  showEditProjectModal.value = true
+}
+
+function closeEditProject() {
+  showEditProjectModal.value = false
+  editingProjectId.value = null
+}
+
+async function submitEditProject() {
+  if (!editingProjectId.value) return
+  const name = editFormName.value.trim()
+  const code = editFormCode.value.trim()
+  if (!name || !code) {
+    toast.error('Vui lòng nhập tên dự án và mã dự án.')
+    return
+  }
+  editSubmitting.value = true
+  try {
+    const updated = await updateProject(editingProjectId.value, { name, code })
+    toast.success('Đã cập nhật dự án.')
+    closeEditProject()
+    const i = projects.value.findIndex((x) => x.id === updated.id)
+    if (i !== -1) {
+      projects.value[i] = { ...projects.value[i], ...updated }
+    }
+    activeProjectCount.value = projects.value.filter((x) => projectIsActive(x)).length
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Cập nhật dự án thất bại.')
+  } finally {
+    editSubmitting.value = false
+  }
+}
+
+async function toggleProjectActive(p: ProjectManagementSidebarDto) {
+  if (togglingProjectId.value) return
+  const next = !projectIsActive(p)
+  togglingProjectId.value = p.id
+  try {
+    const updated = await setProjectActive(p.id, next)
+    const i = projects.value.findIndex((x) => x.id === p.id)
+    if (i !== -1) {
+      projects.value[i] = { ...projects.value[i], ...updated }
+    }
+    activeProjectCount.value = projects.value.filter((x) => projectIsActive(x)).length
+    toast.success(next ? 'Đã kích hoạt dự án.' : 'Đã tạm ngưng dự án.')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không cập nhật được trạng thái.')
+  } finally {
+    togglingProjectId.value = null
+  }
+}
+
+async function submitCreateProject() {
+  const name = createFormName.value.trim()
+  const code = createFormCode.value.trim()
+  if (!name || !code) {
+    toast.error('Vui lòng nhập tên dự án và mã dự án.')
+    return
+  }
+  createSubmitting.value = true
+  try {
+    const created = await createProject({ name, code })
+    toast.success('Đã tạo dự án thành công.')
+    closeCreateProject()
+    await loadDashboard()
+    expandedProjectId.value = created.id
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Tạo dự án thất bại.')
+  } finally {
+    createSubmitting.value = false
+  }
 }
 
 async function onDeleteProject(p: ProjectManagementSidebarDto) {
@@ -186,14 +296,16 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
               <button
                 type="button"
                 class="material-symbols-outlined rounded-lg bg-surface-container-high p-1 text-primary"
-                title="Thêm dự án (API: POST /projects-management)"
+                title="Thêm dự án"
+                aria-label="Thêm dự án"
+                @click="openCreateProject"
               >
                 add
               </button>
             </div>
 
             <div v-if="projects.length === 0" class="px-2 py-6 text-center text-sm text-on-surface-variant">
-              Chưa có dự án. Tạo dự án từ backend hoặc gọi API tạo mới.
+              Chưa có dự án. Bấm nút + để tạo mới.
             </div>
 
             <div v-else class="space-y-3">
@@ -222,9 +334,35 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
                   <div class="flex shrink-0 items-center gap-1">
                     <button
                       type="button"
+                      role="switch"
+                      :aria-checked="projectIsActive(project)"
+                      :aria-busy="togglingProjectId === project.id"
+                      :disabled="togglingProjectId === project.id"
+                      class="relative mr-1 inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+                      :class="[
+                        projectIsActive(project)
+                          ? expandedProjectId === project.id
+                            ? 'bg-white/30'
+                            : 'bg-primary'
+                          : expandedProjectId === project.id
+                            ? 'bg-white/20'
+                            : 'bg-outline-variant/50',
+                      ]"
+                      :title="projectIsActive(project) ? 'Đang hoạt động — bấm để ngưng' : 'Đang ngưng — bấm để kích hoạt'"
+                      @click.stop="toggleProjectActive(project)"
+                    >
+                      <span
+                        class="pointer-events-none absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200"
+                        :class="projectIsActive(project) ? 'translate-x-5' : 'translate-x-0'"
+                      />
+                    </button>
+                    <button
+                      type="button"
                       class="material-symbols-outlined rounded p-1"
                       :class="expandedProjectId === project.id ? 'text-white/80 hover:text-white' : 'text-outline hover:text-primary'"
-                      title="Cập nhật (API)"
+                      title="Sửa dự án"
+                      aria-label="Sửa dự án"
+                      @click.stop="openEditProject(project)"
                     >
                       edit
                     </button>
@@ -351,5 +489,115 @@ async function onDeleteProject(p: ProjectManagementSidebarDto) {
         </div>
       </template>
     </main>
+
+    <div
+      v-if="showCreateProjectModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-project-title"
+      @click.self="closeCreateProject"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="create-project-title" class="font-headline text-lg font-bold text-on-surface">Thêm dự án</h2>
+        <form class="mt-4 space-y-3" @submit.prevent="submitCreateProject">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Tên hiển thị</label>
+            <input
+              v-model="createFormName"
+              type="text"
+              required
+              maxlength="200"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+              placeholder="Ví dụ: Khu đô thị X"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Mã dự án</label>
+            <input
+              v-model="createFormCode"
+              type="text"
+              required
+              maxlength="50"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+              placeholder="Ví dụ: PRJ_XYZ (duy nhất)"
+            />
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-semibold text-on-surface-variant"
+              @click="closeCreateProject"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-60"
+              :disabled="createSubmitting"
+            >
+              {{ createSubmitting ? 'Đang tạo…' : 'Tạo' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div
+      v-if="showEditProjectModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-project-title"
+      @click.self="closeEditProject"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="edit-project-title" class="font-headline text-lg font-bold text-on-surface">Sửa dự án</h2>
+        <form class="mt-4 space-y-3" @submit.prevent="submitEditProject">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Tên hiển thị</label>
+            <input
+              v-model="editFormName"
+              type="text"
+              required
+              maxlength="200"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Mã dự án</label>
+            <input
+              v-model="editFormCode"
+              type="text"
+              required
+              maxlength="50"
+              class="w-full rounded-xl border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-on-surface"
+            />
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              class="rounded-lg px-4 py-2 text-sm font-semibold text-on-surface-variant"
+              @click="closeEditProject"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-60"
+              :disabled="editSubmitting"
+            >
+              {{ editSubmitting ? 'Đang lưu…' : 'Lưu' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
