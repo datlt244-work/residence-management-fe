@@ -7,6 +7,11 @@ let resolveFn: ((value: boolean) => void) | null = null
 
 export function useConfirm() {
   function confirm(opts: { title?: string; message: string }): Promise<boolean> {
+    // Resolve any previously pending confirm as "no" before overwriting
+    if (resolveFn) {
+      resolveFn(false)
+      resolveFn = null
+    }
     title.value = opts.title ?? 'Xác nhận'
     message.value = opts.message
     open.value = true
