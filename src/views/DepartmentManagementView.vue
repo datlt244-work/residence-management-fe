@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
+import { useToast } from '@/composables/useToast'
 import {
   createDepartment,
   deleteDepartment,
@@ -8,8 +10,10 @@ import {
 } from '@/services/department.service'
 import type { DepartmentListItemDto } from '@/types/department'
 
+const toast = useToast()
+const { confirm } = useConfirm()
+
 const loading = ref(false)
-const errorMsg = ref('')
 const page = ref(0)
 const pageSize = ref(20)
 const totalPages = ref(0)
@@ -40,7 +44,6 @@ function formatDt(iso: string | undefined) {
 
 async function load() {
   loading.value = true
-  errorMsg.value = ''
   try {
     const data = await listDepartments({
       page: page.value,
@@ -56,7 +59,7 @@ async function load() {
     page.value = data.pageNumber
     pageSize.value = data.pageSize
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Không tải được danh sách.'
+    toast.error(e instanceof Error ? e.message : 'Không tải được danh sách.')
     rows.value = []
   } finally {
     loading.value = false
@@ -86,35 +89,39 @@ async function submitForm() {
   const code = formCode.value.trim()
   const name = formName.value.trim()
   if (!code || !name) {
-    errorMsg.value = 'Vui lòng nhập mã và tên phòng ban.'
+    toast.error('Vui lòng nhập mã và tên phòng ban.')
     return
   }
   formSubmitting.value = true
-  errorMsg.value = ''
   try {
     if (editingId.value) {
       await updateDepartment(editingId.value, { code, name })
+      toast.success('Đã cập nhật phòng ban thành công.')
     } else {
       await createDepartment({ code, name })
+      toast.success('Đã tạo phòng ban thành công.')
     }
     closeModal()
     await load()
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Lưu thất bại.'
+    toast.error(e instanceof Error ? e.message : 'Lưu thất bại.')
   } finally {
     formSubmitting.value = false
   }
 }
 
 async function onDelete(row: DepartmentListItemDto) {
-  const ok = window.confirm(`Xóa phòng ban "${row.name}" (${row.code})? Không thể hoàn tác nếu còn nhân viên tham chiếu.`)
+  const ok = await confirm({
+    title: 'Xóa phòng ban',
+    message: `Bạn có chắc muốn xóa phòng ban "${row.name}" (${row.code})?\nKhông thể hoàn tác nếu còn nhân viên tham chiếu.`,
+  })
   if (!ok) return
-  errorMsg.value = ''
   try {
     await deleteDepartment(row.id)
+    toast.success('Đã xóa phòng ban thành công.')
     await load()
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : 'Xóa thất bại.'
+    toast.error(e instanceof Error ? e.message : 'Xóa thất bại.')
   }
 }
 
@@ -175,13 +182,6 @@ onMounted(() => {
       </button>
       </div>
     </div>
-
-    <p
-      v-if="errorMsg"
-      class="mb-4 rounded-xl bg-error-container px-4 py-3 text-sm font-medium text-on-error-container"
-    >
-      {{ errorMsg }}
-    </p>
 
     <div class="mb-4 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
