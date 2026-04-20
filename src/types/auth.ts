@@ -1,21 +1,16 @@
-export interface AuthUser {
-  id: string
-  email: string
-  phoneNumber: string | null
-  fullName: string
-  isActive: boolean
-}
+import type { EmployeeDto } from '@/types/employee'
 
 export interface LoginRequest {
   email: string
   password: string
 }
 
-export interface LoginData {
+/** Khớp OpenAPI LoginResponseDto (trường data khi đăng nhập thành công). */
+export interface LoginResponseDto {
   accessToken: string
   tokenType: string
   expiresIn: number
-  user: AuthUser
+  employee: EmployeeDto
   loginTime: string
   valid: boolean
 }

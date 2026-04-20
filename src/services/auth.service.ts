@@ -1,15 +1,15 @@
 import { apiEndpoints } from '@/config/api'
 import type { ApiResponse } from '@/types/api'
-import type { LoginData, LoginRequest } from '@/types/auth'
+import type { LoginRequest, LoginResponseDto } from '@/types/auth'
 
-export async function loginApi(payload: LoginRequest): Promise<ApiResponse<LoginData>> {
+export async function loginApi(payload: LoginRequest): Promise<ApiResponse<LoginResponseDto>> {
   const res = await fetch(apiEndpoints.auth.login, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
 
-  const json = (await res.json()) as ApiResponse<LoginData> & { error?: string }
+  const json = (await res.json()) as ApiResponse<LoginResponseDto> & { error?: string }
 
   if (!res.ok || json.success === false) {
     const backendMsg = typeof json.message === 'string' ? json.message.trim() : ''
