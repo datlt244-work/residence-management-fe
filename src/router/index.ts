@@ -39,8 +39,8 @@ const router = createRouter({
         {
           path: 'ton-kho',
           name: 'admin-inventory',
-          component: () => import('../views/AdminPlaceholderView.vue'),
-          meta: { title: 'Tồn kho căn hộ' },
+          component: () => import('../views/ApartmentListView.vue'),
+          meta: { title: 'Danh sách căn hộ' },
         },
         {
           path: 'cai-dat',

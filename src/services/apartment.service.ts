@@ -1,5 +1,16 @@
 import { apiFetch, parseJsonResponse } from '@/utils/http'
-import type { PageResultApartmentListItemDto } from '@/types/apartment'
+import type {
+  ApartmentAdminDto,
+  ApartmentListItemDto,
+  ApartmentOwnerInfoDto,
+  BulkDeleteApartmentsCommand,
+  BulkDeleteApartmentsResultDto,
+  MoveApartmentsRequest,
+  MoveApartmentsResultDto,
+  PageResultApartmentListItemDto,
+  UpdateApartmentCommand,
+  UpdateApartmentStatusCommand,
+} from '@/types/apartment'
 
 export interface ListApartmentsParams {
   page?: number
@@ -22,5 +33,58 @@ export async function listApartments(
   if (params.search) sp.set('search', params.search)
   const res = await apiFetch(`/apartments?${sp.toString()}`)
   const json = await parseJsonResponse<PageResultApartmentListItemDto>(res)
+  return json.data
+}
+
+export async function getApartmentDetail(id: string): Promise<ApartmentAdminDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`)
+  const json = await parseJsonResponse<ApartmentAdminDto>(res)
+  return json.data
+}
+
+export async function updateApartment(id: string, body: UpdateApartmentCommand): Promise<ApartmentAdminDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<ApartmentAdminDto>(res)
+  return json.data
+}
+
+export async function getApartmentOwnerInfo(id: string): Promise<ApartmentOwnerInfoDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/owner-info`)
+  const json = await parseJsonResponse<ApartmentOwnerInfoDto>(res)
+  return json.data
+}
+
+export async function patchApartmentStatus(
+  id: string,
+  body: UpdateApartmentStatusCommand,
+): Promise<ApartmentListItemDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<ApartmentListItemDto>(res)
+  return json.data
+}
+
+export async function moveApartments(body: MoveApartmentsRequest): Promise<MoveApartmentsResultDto> {
+  const res = await apiFetch('/apartments/move', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<MoveApartmentsResultDto>(res)
+  return json.data
+}
+
+export async function bulkDeleteApartments(
+  body: BulkDeleteApartmentsCommand,
+): Promise<BulkDeleteApartmentsResultDto> {
+  const res = await apiFetch('/apartments/bulk-delete', {
+    method: 'DELETE',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<BulkDeleteApartmentsResultDto>(res)
   return json.data
 }
