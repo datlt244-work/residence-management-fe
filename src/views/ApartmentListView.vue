@@ -260,11 +260,11 @@ async function loadOwnerSensitive() {
 
 function statusBadge(raw: string | undefined) {
   const s = String(raw ?? '').toUpperCase()
-  if (['FOR_SALE', 'AVAILABLE', 'DANG_BAN', 'ACTIVE', 'OPEN'].some((x) => s === x || s.includes(x)))
+  if (['FOR_SALE', 'AVAILABLE', 'DANG_BAN', 'ACTIVE', 'OPEN'].some((x) => s === x))
     return { label: 'Đang bán', variant: 'sale' as const }
-  if (['BOOKED', 'DEPOSIT', 'DAT_COC', 'RESERVED'].some((x) => s === x || s.includes(x)))
+  if (['BOOKED', 'DEPOSIT', 'DAT_COC', 'RESERVED'].some((x) => s === x))
     return { label: 'Đã cọc', variant: 'booked' as const }
-  if (['SOLD', 'DA_BAN'].some((x) => s === x || s.includes(x))) return { label: 'Đã bán', variant: 'sold' as const }
+  if (['SOLD', 'DA_BAN'].some((x) => s === x)) return { label: 'Đã bán', variant: 'sold' as const }
   return { label: raw?.trim() || 'Khác', variant: 'other' as const }
 }
 
