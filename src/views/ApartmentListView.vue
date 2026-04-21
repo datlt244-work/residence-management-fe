@@ -7,10 +7,15 @@ import {
   getApartmentOwnerInfo,
   listApartments,
   moveApartments,
-  patchApartmentStatus,
+  updateApartment,
 } from '@/services/apartment.service'
 import { listProjectsManagement } from '@/services/project.service'
-import type { ApartmentAdminDto, ApartmentListItemDto, ApartmentOwnerInfoDto } from '@/types/apartment'
+import type {
+  ApartmentAdminDto,
+  ApartmentListItemDto,
+  ApartmentOwnerInfoDto,
+  UpdateApartmentCommand,
+} from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
 
 const toast = useToast()
@@ -49,7 +54,18 @@ const ownerInfoExtra = ref<ApartmentOwnerInfoDto | null>(null)
 const ownerInfoLoading = ref(false)
 
 const statusDraft = ref('')
-const statusPatching = ref(false)
+const codeDraft = ref('')
+const areaDraft = ref('')
+const priceDraft = ref('')
+const taxFeeDraft = ref('')
+const furnitureDraft = ref('')
+const legalDraft = ref('')
+const balconyDraft = ref('')
+const noteDraft = ref('')
+const ownerPhoneDraft = ref('')
+const ownerContactDraft = ref('')
+const sourceDraft = ref('')
+const apartmentSaving = ref(false)
 
 /** Giá trị status gợi ý — chỉnh nếu backend dùng mã khác. */
 const STATUS_QUICK_OPTIONS = [
@@ -156,14 +172,68 @@ function displayField(v: string | null | undefined) {
   return v
 }
 
-function displayOwnerPhone() {
-  if (ownerInfoExtra.value) return displayField(ownerInfoExtra.value.ownerPhone)
-  return displayField(apartmentDetail.value?.ownerPhone)
+function clearEditDrafts() {
+  codeDraft.value = ''
+  statusDraft.value = ''
+  areaDraft.value = ''
+  priceDraft.value = ''
+  taxFeeDraft.value = ''
+  furnitureDraft.value = ''
+  legalDraft.value = ''
+  balconyDraft.value = ''
+  noteDraft.value = ''
+  ownerPhoneDraft.value = ''
+  ownerContactDraft.value = ''
+  sourceDraft.value = ''
 }
 
-function displaySource() {
-  if (ownerInfoExtra.value) return displayField(ownerInfoExtra.value.source)
-  return displayField(apartmentDetail.value?.source)
+function syncEditDraftFromDetail() {
+  const a = apartmentDetail.value
+  if (!a) return
+  codeDraft.value = a.code ?? ''
+  statusDraft.value = a.status?.trim() ?? ''
+  areaDraft.value = a.area != null && !Number.isNaN(a.area) ? String(a.area) : ''
+  priceDraft.value = a.price != null && !Number.isNaN(a.price) ? String(a.price) : ''
+  taxFeeDraft.value = a.taxFee != null && !Number.isNaN(a.taxFee) ? String(a.taxFee) : ''
+  furnitureDraft.value = a.furnitureStatus ?? ''
+  legalDraft.value = a.legalStatus ?? ''
+  balconyDraft.value = a.balconyDirection ?? ''
+  noteDraft.value = a.note ?? ''
+  ownerPhoneDraft.value = a.ownerPhone ?? ''
+  ownerContactDraft.value = a.ownerContact ?? ''
+  sourceDraft.value = a.source ?? ''
+}
+
+function parseDecimalInput(s: string): number | null | undefined {
+  const t = s.trim().replace(/\s/g, '').replace(',', '.')
+  if (t === '') return undefined
+  const n = Number(t)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function strToNull(s: string): string | null {
+  const t = s.trim()
+  return t === '' ? null : t
+}
+
+function buildUpdateApartmentCommand(): UpdateApartmentCommand {
+  const area = parseDecimalInput(areaDraft.value)
+  const price = parseDecimalInput(priceDraft.value)
+  const taxFee = parseDecimalInput(taxFeeDraft.value)
+  return {
+    code: codeDraft.value.trim(),
+    status: statusDraft.value.trim(),
+    area: area === undefined ? null : area,
+    price: price === undefined ? null : price,
+    taxFee: taxFee === undefined ? null : taxFee,
+    furnitureStatus: strToNull(furnitureDraft.value),
+    legalStatus: strToNull(legalDraft.value),
+    balconyDirection: strToNull(balconyDraft.value),
+    note: strToNull(noteDraft.value),
+    ownerPhone: strToNull(ownerPhoneDraft.value),
+    ownerContact: strToNull(ownerContactDraft.value),
+    source: strToNull(sourceDraft.value),
+  }
 }
 
 async function loadOwnerSensitive() {
@@ -172,6 +242,10 @@ async function loadOwnerSensitive() {
   ownerInfoLoading.value = true
   try {
     ownerInfoExtra.value = await getApartmentOwnerInfo(id)
+    if (ownerInfoExtra.value) {
+      ownerPhoneDraft.value = ownerInfoExtra.value.ownerPhone ?? ''
+      sourceDraft.value = ownerInfoExtra.value.source ?? ''
+    }
     toast.success('Đã tải SĐT chủ & nguồn.')
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Không tải được thông tin chủ & nguồn.')
@@ -361,30 +435,30 @@ function mergeApartmentInList(updated: ApartmentListItemDto) {
   }
 }
 
-async function submitStatusChange() {
+async function submitApartmentUpdate() {
   const id = apartmentDetail.value?.id
-  const next = statusDraft.value.trim()
-  if (!id || !next) {
-    toast.error('Chọn trạng thái hợp lệ.')
+  if (!id) return
+  const body = buildUpdateApartmentCommand()
+  if (!body.code) {
+    toast.error('Mã căn không được để trống.')
     return
   }
-  if (next === apartmentDetail.value?.status) {
-    toast.info('Trạng thái không đổi.')
+  if (!body.status) {
+    toast.error('Trạng thái không được để trống.')
     return
   }
-  statusPatching.value = true
+  apartmentSaving.value = true
   try {
-    const updated = await patchApartmentStatus(id, { status: next })
+    const updated = await updateApartment(id, body)
+    apartmentDetail.value = updated
+    ownerInfoExtra.value = null
     mergeApartmentInList(updated)
-    if (apartmentDetail.value) {
-      apartmentDetail.value = { ...apartmentDetail.value, ...updated }
-    }
-    statusDraft.value = updated.status ?? next
-    toast.success('Đã cập nhật trạng thái căn hộ.')
+    syncEditDraftFromDetail()
+    toast.success('Đã cập nhật căn hộ.')
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Không cập nhật được trạng thái.')
+    toast.error(e instanceof Error ? e.message : 'Không cập nhật được căn hộ.')
   } finally {
-    statusPatching.value = false
+    apartmentSaving.value = false
   }
 }
 
@@ -392,18 +466,18 @@ function closeApartmentDetail() {
   showDetailModal.value = false
   apartmentDetail.value = null
   ownerInfoExtra.value = null
-  statusDraft.value = ''
+  clearEditDrafts()
 }
 
 async function openApartmentDetail(row: ApartmentListItemDto) {
   showDetailModal.value = true
   apartmentDetail.value = null
   ownerInfoExtra.value = null
-  statusDraft.value = ''
+  clearEditDrafts()
   detailLoading.value = true
   try {
     apartmentDetail.value = await getApartmentDetail(row.id)
-    statusDraft.value = apartmentDetail.value.status?.trim() ?? ''
+    syncEditDraftFromDetail()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Không tải được chi tiết căn hộ.')
     showDetailModal.value = false
@@ -685,104 +759,131 @@ onMounted(async () => {
       @click.self="closeApartmentDetail"
     >
       <div
-        class="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        class="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
         @click.stop
       >
-        <h2 id="apt-detail-title" class="font-headline text-lg font-bold text-on-surface">Chi tiết căn hộ</h2>
+        <h2 id="apt-detail-title" class="font-headline text-lg font-bold text-on-surface">Chi tiết & chỉnh sửa căn hộ</h2>
         <p class="mt-1 text-xs text-on-surface-variant">
-          Một số trường có thể bị ẩn tùy vai trò (ví dụ STAFF không xem số chủ nhà / nguồn).
+          Đổi dự án / phân khu / loại căn bằng thao tác Di chuyển trên danh sách. Một số trường có thể bị ẩn tùy vai trò.
         </p>
 
         <div v-if="detailLoading" class="mt-6 py-10 text-center text-sm text-on-surface-variant">Đang tải…</div>
-        <dl v-else-if="apartmentDetail" class="mt-4 space-y-3 text-sm">
+        <div v-else-if="apartmentDetail" class="mt-4 space-y-4 text-sm">
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="sm:col-span-2 rounded-lg border border-outline-variant/15 bg-surface-container-low/50 px-3 py-2 text-xs text-on-surface-variant">
+              <span class="font-semibold text-on-surface">Vị trí (chỉ đọc):</span>
+              {{ displayField(apartmentDetail.projectName ?? apartmentDetail.projectCode) }} ·
+              {{ displayField(apartmentDetail.zoneName ?? apartmentDetail.zoneCode) }} ·
+              {{ displayField(apartmentDetail.apartmentTypeName ?? apartmentDetail.apartmentTypeCode) }}
+            </div>
             <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</dt>
-              <dd class="font-medium text-on-surface">{{ displayField(apartmentDetail.code) }}</dd>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</label>
+              <input
+                v-model="codeDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+                autocomplete="off"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Trạng thái</label>
+              <select
+                v-model="statusDraft"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              >
+                <option v-for="opt in statusSelectOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Diện tích (m²)</label>
+              <input
+                v-model="areaDraft"
+                type="text"
+                inputmode="decimal"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+                placeholder="VD: 75.5"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Giá (VNĐ)</label>
+              <input
+                v-model="priceDraft"
+                type="text"
+                inputmode="decimal"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Phí / thuế</label>
+              <input
+                v-model="taxFeeDraft"
+                type="text"
+                inputmode="decimal"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Nội thất</label>
+              <input
+                v-model="furnitureDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Pháp lý</label>
+              <input
+                v-model="legalDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </div>
             <div class="sm:col-span-2">
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Trạng thái</dt>
-              <dd class="mt-1 text-on-surface">{{ displayField(apartmentDetail.status) }}</dd>
-              <div class="mt-3 rounded-xl border border-outline-variant/20 bg-surface-container-low/80 p-3">
-                <p class="mb-2 text-xs font-semibold text-on-surface">Đổi trạng thái nhanh</p>
-                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <select
-                    v-model="statusDraft"
-                    class="min-w-0 flex-1 rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    <option v-for="opt in statusSelectOptions" :key="opt.value" :value="opt.value">
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                  <button
-                    type="button"
-                    class="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
-                    :disabled="
-                      statusPatching ||
-                      statusDraft.trim() === (apartmentDetail.status ?? '').trim()
-                    "
-                    @click="submitStatusChange"
-                  >
-                    {{ statusPatching ? 'Đang lưu…' : 'Cập nhật' }}
-                  </button>
-                </div>
-                <p class="mt-2 text-[11px] text-on-surface-variant">
-                  Cập nhật nhanh trạng thái (Admin, Manager hoặc Staff).
-                </p>
-              </div>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Dự án</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.projectName ?? apartmentDetail.projectCode) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Phân khu</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.zoneName ?? apartmentDetail.zoneCode) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Loại căn</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.apartmentTypeName ?? apartmentDetail.apartmentTypeCode) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Diện tích</dt>
-              <dd class="text-on-surface">{{ formatArea(apartmentDetail.area) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Giá</dt>
-              <dd class="font-semibold text-primary">{{ formatPrice(apartmentDetail.price) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Phí / thuế</dt>
-              <dd class="text-on-surface">{{ apartmentDetail.taxFee != null ? formatPrice(apartmentDetail.taxFee) : '—' }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Nội thất</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.furnitureStatus) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Pháp lý</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.legalStatus) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Hướng ban công</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.balconyDirection) }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">SĐT chủ</dt>
-              <dd class="text-on-surface">{{ displayOwnerPhone() }}</dd>
-            </div>
-            <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Liên hệ chủ</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.ownerContact) }}</dd>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Hướng ban công</label>
+              <input
+                v-model="balconyDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </div>
             <div class="sm:col-span-2">
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Nguồn</dt>
-              <dd class="text-on-surface">{{ displaySource() }}</dd>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Ghi chú</label>
+              <textarea
+                v-model="noteDraft"
+                rows="2"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">SĐT chủ</label>
+              <input
+                v-model="ownerPhoneDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Liên hệ chủ</label>
+              <input
+                v-model="ownerContactDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="text-xs font-semibold uppercase text-on-surface-variant">Nguồn</label>
+              <input
+                v-model="sourceDraft"
+                type="text"
+                class="mt-1 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </div>
             <div v-if="canLoadOwnerSensitive && apartmentDetail" class="sm:col-span-2">
               <div class="rounded-xl border border-outline-variant/20 bg-surface-container-low/80 p-3">
                 <p class="mb-2 text-xs text-on-surface-variant">
-                  SĐT chủ và nguồn đầy đủ chỉ dành cho Admin/Manager (API owner-info).
+                  Admin/Manager có thể tải SĐT & nguồn đầy đủ (GET owner-info) để điền form.
                 </p>
                 <button
                   type="button"
@@ -791,25 +892,45 @@ onMounted(async () => {
                   @click="loadOwnerSensitive"
                 >
                   <span class="material-symbols-outlined text-[18px]">lock_open</span>
-                  {{ ownerInfoLoading ? 'Đang tải…' : ownerInfoExtra ? 'Tải lại thông tin nhạy cảm' : 'Tải SĐT chủ & nguồn' }}
+                  {{ ownerInfoLoading ? 'Đang tải…' : ownerInfoExtra ? 'Tải lại owner-info' : 'Tải SĐT chủ & nguồn' }}
                 </button>
               </div>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Tạo lúc</dt>
-              <dd class="text-on-surface-variant">{{ formatDt(apartmentDetail.createdAt) }}</dd>
+              <p class="text-xs font-semibold uppercase text-on-surface-variant">Tạo lúc</p>
+              <p class="mt-1 text-on-surface-variant">{{ formatDt(apartmentDetail.createdAt) }}</p>
             </div>
             <div>
-              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Cập nhật</dt>
-              <dd class="text-on-surface-variant">{{ formatDt(apartmentDetail.updatedAt) }}</dd>
+              <p class="text-xs font-semibold uppercase text-on-surface-variant">Cập nhật</p>
+              <p class="mt-1 text-on-surface-variant">{{ formatDt(apartmentDetail.updatedAt) }}</p>
             </div>
           </div>
-        </dl>
+        </div>
 
-        <div class="mt-6 flex justify-end">
+        <div
+          class="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-outline-variant/20 pt-4"
+        >
+          <template v-if="apartmentDetail && !detailLoading">
+            <button
+              type="button"
+              class="rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-50"
+              :disabled="apartmentSaving"
+              @click="syncEditDraftFromDetail"
+            >
+              Hoàn tác
+            </button>
+            <button
+              type="button"
+              class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
+              :disabled="apartmentSaving"
+              @click="submitApartmentUpdate"
+            >
+              {{ apartmentSaving ? 'Đang lưu…' : 'Lưu thay đổi' }}
+            </button>
+          </template>
           <button
             type="button"
-            class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary"
+            class="rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface hover:bg-surface-container-low"
             @click="closeApartmentDetail"
           >
             Đóng

@@ -34,6 +34,7 @@ export interface ApartmentAdminDto extends ApartmentListItemDto {
   ownerPhone?: string | null
   ownerContact?: string | null
   source?: string | null
+  note?: string | null
 }
 
 /** GET /apartments/{id}/owner-info — chỉ SĐT chủ & nguồn; ADMIN/MANAGER. */
@@ -45,6 +46,22 @@ export interface ApartmentOwnerInfoDto {
 /** PATCH /apartments/{id}/status */
 export interface UpdateApartmentStatusCommand {
   status: string
+}
+
+/** PUT /apartments/{id} — không đổi project / zone / loại căn (dùng POST /apartments/move). */
+export interface UpdateApartmentCommand {
+  code: string
+  status: string
+  area?: number | null
+  price?: number | null
+  taxFee?: number | null
+  furnitureStatus?: string | null
+  legalStatus?: string | null
+  balconyDirection?: string | null
+  note?: string | null
+  ownerPhone?: string | null
+  ownerContact?: string | null
+  source?: string | null
 }
 
 /** POST /apartments/move */

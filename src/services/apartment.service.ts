@@ -6,6 +6,7 @@ import type {
   MoveApartmentsRequest,
   MoveApartmentsResultDto,
   PageResultApartmentListItemDto,
+  UpdateApartmentCommand,
   UpdateApartmentStatusCommand,
 } from '@/types/apartment'
 
@@ -35,6 +36,15 @@ export async function listApartments(
 
 export async function getApartmentDetail(id: string): Promise<ApartmentAdminDto> {
   const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`)
+  const json = await parseJsonResponse<ApartmentAdminDto>(res)
+  return json.data
+}
+
+export async function updateApartment(id: string, body: UpdateApartmentCommand): Promise<ApartmentAdminDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  })
   const json = await parseJsonResponse<ApartmentAdminDto>(res)
   return json.data
 }
