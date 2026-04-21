@@ -28,3 +28,10 @@ export interface PageResultApartmentListItemDto {
   totalElements: number
   totalPages: number
 }
+
+/** GET /apartments/{id} — chi tiết form. STAFF: ownerPhone, ownerContact, source có thể null (ẩn). */
+export interface ApartmentAdminDto extends ApartmentListItemDto {
+  ownerPhone?: string | null
+  ownerContact?: string | null
+  source?: string | null
+}

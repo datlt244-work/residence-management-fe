@@ -1,19 +1,48 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
-import { listApartments } from '@/services/apartment.service'
-import type { ApartmentListItemDto } from '@/types/apartment'
+import { getApartmentDetail, listApartments } from '@/services/apartment.service'
+import { listProjectsManagement } from '@/services/project.service'
+import type { ApartmentAdminDto, ApartmentListItemDto } from '@/types/apartment'
+import type { ProjectManagementSidebarDto } from '@/types/project'
 
 const toast = useToast()
 
 const loading = ref(true)
+const projectsTree = ref<ProjectManagementSidebarDto[]>([])
 const searchInput = ref('')
 const searchQuery = ref('')
+const filterProjectId = ref('')
+const filterZoneId = ref('')
+const filterAptTypeId = ref('')
 const page = ref(0)
 const pageSize = ref(12)
 const totalPages = ref(0)
 const totalElements = ref(0)
 const items = ref<ApartmentListItemDto[]>([])
+
+const showDetailModal = ref(false)
+const detailLoading = ref(false)
+const apartmentDetail = ref<ApartmentAdminDto | null>(null)
+
+const zoneOptions = computed(() => {
+  const p = projectsTree.value.find((x) => x.id === filterProjectId.value)
+  return p?.zones ?? []
+})
+
+const aptTypeOptions = computed(() => {
+  const z = zoneOptions.value.find((x) => x.id === filterZoneId.value)
+  return z?.apartmentTypes ?? []
+})
+
+watch(filterProjectId, () => {
+  filterZoneId.value = ''
+  filterAptTypeId.value = ''
+})
+
+watch(filterZoneId, () => {
+  filterAptTypeId.value = ''
+})
 
 const heroGradients = [
   'from-primary/35 via-surface-container-high/90 to-tertiary/15',
@@ -43,6 +72,20 @@ function formatPrice(n: number | undefined) {
 function formatArea(n: number | undefined) {
   if (n == null || Number.isNaN(n)) return '—'
   return `${n.toLocaleString('vi-VN', { maximumFractionDigits: 1 })} m²`
+}
+
+function formatDt(iso: string | undefined) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('vi-VN')
+  } catch {
+    return iso
+  }
+}
+
+function displayField(v: string | null | undefined) {
+  if (v == null || v === '') return '—'
+  return v
 }
 
 function statusBadge(raw: string | undefined) {
@@ -81,6 +124,14 @@ function badgeClass(a: ApartmentListItemDto) {
   }
 }
 
+async function loadProjectsTree() {
+  try {
+    projectsTree.value = await listProjectsManagement()
+  } catch {
+    projectsTree.value = []
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -88,6 +139,9 @@ async function load() {
       page: page.value,
       size: pageSize.value,
       search: searchQuery.value.trim() || undefined,
+      projectId: filterProjectId.value || undefined,
+      zoneId: filterZoneId.value || undefined,
+      apartmentTypeId: filterAptTypeId.value || undefined,
     })
     items.value = data.content
     totalPages.value = data.totalPages
@@ -102,8 +156,19 @@ async function load() {
   }
 }
 
-function applySearch() {
+/** Đồng bộ ô tìm + bộ lọc GET /apartments (page, size, projectId, zoneId, apartmentTypeId, search). */
+function applyFilters() {
   searchQuery.value = searchInput.value
+  page.value = 0
+  load()
+}
+
+function clearApartmentFilters() {
+  searchInput.value = ''
+  searchQuery.value = ''
+  filterProjectId.value = ''
+  filterZoneId.value = ''
+  filterAptTypeId.value = ''
   page.value = 0
   load()
 }
@@ -134,12 +199,28 @@ function onBulkDelete() {
   toast.info('Xóa hàng loạt — tính năng sắp ra mắt.')
 }
 
-function onEdit() {
-  toast.info('Chỉnh sửa căn — tính năng sắp ra mắt.')
+function closeApartmentDetail() {
+  showDetailModal.value = false
+  apartmentDetail.value = null
 }
 
-onMounted(() => {
-  load()
+async function openApartmentDetail(row: ApartmentListItemDto) {
+  showDetailModal.value = true
+  apartmentDetail.value = null
+  detailLoading.value = true
+  try {
+    apartmentDetail.value = await getApartmentDetail(row.id)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không tải được chi tiết căn hộ.')
+    showDetailModal.value = false
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await loadProjectsTree()
+  await load()
 })
 </script>
 
@@ -167,6 +248,68 @@ onMounted(() => {
         </div>
       </section>
 
+      <!-- Bộ lọc API: projectId, zoneId, apartmentTypeId -->
+      <section class="rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-4 shadow-sm">
+        <p class="mb-3 text-xs font-bold uppercase tracking-wider text-on-surface-variant">Lọc theo hạ tầng</p>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Dự án</label
+            >
+            <select
+              v-model="filterProjectId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Tất cả dự án</option>
+              <option v-for="p in projectsTree" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }})</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Phân khu</label
+            >
+            <select
+              v-model="filterZoneId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              :disabled="!filterProjectId"
+            >
+              <option value="">Tất cả phân khu</option>
+              <option v-for="z in zoneOptions" :key="z.id" :value="z.id">{{ z.name }} ({{ z.code || '—' }})</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wider text-on-surface-variant"
+              >Loại căn</label
+            >
+            <select
+              v-model="filterAptTypeId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              :disabled="!filterZoneId"
+            >
+              <option value="">Tất cả loại</option>
+              <option v-for="t in aptTypeOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-low"
+            @click="clearApartmentFilters"
+          >
+            <span class="material-symbols-outlined text-[18px]">filter_alt_off</span>
+            Xóa bộ lọc
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
+            @click="applyFilters"
+          >
+            Áp dụng lọc
+          </button>
+        </div>
+      </section>
+
       <!-- Thanh tìm kiếm + hành động -->
       <section
         class="sticky top-16 z-30 rounded-2xl border border-outline-variant/10 bg-background/70 py-2 backdrop-blur-md"
@@ -180,14 +323,14 @@ onMounted(() => {
               v-model="searchInput"
               type="search"
               class="w-full border-none bg-transparent py-4 pl-3 text-on-surface placeholder:text-outline outline-none ring-0"
-              placeholder="Tìm theo mã căn, dự án, phân khu…"
-              @keyup.enter="applySearch"
+              placeholder="Tìm theo mã căn (không phân biệt hoa thường)"
+              @keyup.enter="applyFilters"
             />
             <button
               type="button"
               class="material-symbols-outlined text-outline transition-colors hover:text-primary"
-              aria-label="Bộ lọc nâng cao (sắp ra mắt)"
-              @click="toast.info('Bộ lọc nâng cao — sắp ra mắt.')"
+              aria-label="Áp dụng tìm theo mã căn"
+              @click="applyFilters"
             >
               tune
             </button>
@@ -269,8 +412,8 @@ onMounted(() => {
               <button
                 type="button"
                 class="rounded-xl bg-surface-container-low p-2.5 text-primary transition-all hover:bg-primary hover:text-white"
-                aria-label="Sửa"
-                @click="onEdit()"
+                aria-label="Chi tiết căn hộ"
+                @click="openApartmentDetail(apt)"
               >
                 <span class="material-symbols-outlined">edit</span>
               </button>
@@ -311,5 +454,105 @@ onMounted(() => {
         </div>
       </div>
     </main>
+
+    <!-- GET /apartments/{id} -->
+    <div
+      v-if="showDetailModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="apt-detail-title"
+      @click.self="closeApartmentDetail"
+    >
+      <div
+        class="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="apt-detail-title" class="font-headline text-lg font-bold text-on-surface">Chi tiết căn hộ</h2>
+        <p class="mt-1 text-xs text-on-surface-variant">
+          Một số trường có thể bị ẩn tùy vai trò (ví dụ STAFF không xem số chủ nhà / nguồn).
+        </p>
+
+        <div v-if="detailLoading" class="mt-6 py-10 text-center text-sm text-on-surface-variant">Đang tải…</div>
+        <dl v-else-if="apartmentDetail" class="mt-4 space-y-3 text-sm">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</dt>
+              <dd class="font-medium text-on-surface">{{ displayField(apartmentDetail.code) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Trạng thái</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.status) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Dự án</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.projectName ?? apartmentDetail.projectCode) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Phân khu</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.zoneName ?? apartmentDetail.zoneCode) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Loại căn</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.apartmentTypeName ?? apartmentDetail.apartmentTypeCode) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Diện tích</dt>
+              <dd class="text-on-surface">{{ formatArea(apartmentDetail.area) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Giá</dt>
+              <dd class="font-semibold text-primary">{{ formatPrice(apartmentDetail.price) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Phí / thuế</dt>
+              <dd class="text-on-surface">{{ apartmentDetail.taxFee != null ? formatPrice(apartmentDetail.taxFee) : '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Nội thất</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.furnitureStatus) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Pháp lý</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.legalStatus) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Hướng ban công</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.balconyDirection) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">SĐT chủ</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.ownerPhone) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Liên hệ chủ</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.ownerContact) }}</dd>
+            </div>
+            <div class="sm:col-span-2">
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Nguồn</dt>
+              <dd class="text-on-surface">{{ displayField(apartmentDetail.source) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Tạo lúc</dt>
+              <dd class="text-on-surface-variant">{{ formatDt(apartmentDetail.createdAt) }}</dd>
+            </div>
+            <div>
+              <dt class="text-xs font-semibold uppercase text-on-surface-variant">Cập nhật</dt>
+              <dd class="text-on-surface-variant">{{ formatDt(apartmentDetail.updatedAt) }}</dd>
+            </div>
+          </div>
+        </dl>
+
+        <div class="mt-6 flex justify-end">
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary"
+            @click="closeApartmentDetail"
+          >
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
