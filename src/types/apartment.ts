@@ -41,3 +41,8 @@ export interface ApartmentOwnerInfoDto {
   ownerPhone?: string | null
   source?: string | null
 }
+
+/** PATCH /apartments/{id}/status */
+export interface UpdateApartmentStatusCommand {
+  status: string
+}

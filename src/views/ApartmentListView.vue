@@ -2,7 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
-import { getApartmentDetail, getApartmentOwnerInfo, listApartments } from '@/services/apartment.service'
+import {
+  getApartmentDetail,
+  getApartmentOwnerInfo,
+  listApartments,
+  patchApartmentStatus,
+} from '@/services/apartment.service'
 import { listProjectsManagement } from '@/services/project.service'
 import type { ApartmentAdminDto, ApartmentListItemDto, ApartmentOwnerInfoDto } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
@@ -33,6 +38,27 @@ const detailLoading = ref(false)
 const apartmentDetail = ref<ApartmentAdminDto | null>(null)
 const ownerInfoExtra = ref<ApartmentOwnerInfoDto | null>(null)
 const ownerInfoLoading = ref(false)
+
+const statusDraft = ref('')
+const statusPatching = ref(false)
+
+/** Giá trị status gợi ý — chỉnh nếu backend dùng mã khác. */
+const STATUS_QUICK_OPTIONS = [
+  { value: 'FOR_SALE', label: 'Đang bán' },
+  { value: 'AVAILABLE', label: 'Còn bán (AVAILABLE)' },
+  { value: 'BOOKED', label: 'Đã cọc (BOOKED)' },
+  { value: 'DEPOSIT', label: 'Đã cọc (DEPOSIT)' },
+  { value: 'SOLD', label: 'Đã bán (SOLD)' },
+] as const
+
+const statusSelectOptions = computed(() => {
+  const cur = apartmentDetail.value?.status
+  const base = STATUS_QUICK_OPTIONS.map((o) => ({ ...o }))
+  if (cur && !base.some((o) => o.value === cur)) {
+    return [{ value: cur, label: `Giữ mã hiện tại: ${cur}` }, ...base]
+  }
+  return base
+})
 
 const zoneOptions = computed(() => {
   const p = projectsTree.value.find((x) => x.id === filterProjectId.value)
@@ -232,19 +258,56 @@ function onBulkDelete() {
   toast.info('Xóa hàng loạt — tính năng sắp ra mắt.')
 }
 
+function mergeApartmentInList(updated: ApartmentListItemDto) {
+  const i = items.value.findIndex((x) => x.id === updated.id)
+  if (i !== -1) {
+    items.value[i] = { ...items.value[i], ...updated }
+  }
+}
+
+async function submitStatusChange() {
+  const id = apartmentDetail.value?.id
+  const next = statusDraft.value.trim()
+  if (!id || !next) {
+    toast.error('Chọn trạng thái hợp lệ.')
+    return
+  }
+  if (next === apartmentDetail.value?.status) {
+    toast.info('Trạng thái không đổi.')
+    return
+  }
+  statusPatching.value = true
+  try {
+    const updated = await patchApartmentStatus(id, { status: next })
+    mergeApartmentInList(updated)
+    if (apartmentDetail.value) {
+      apartmentDetail.value = { ...apartmentDetail.value, ...updated }
+    }
+    statusDraft.value = updated.status ?? next
+    toast.success('Đã cập nhật trạng thái căn hộ.')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không cập nhật được trạng thái.')
+  } finally {
+    statusPatching.value = false
+  }
+}
+
 function closeApartmentDetail() {
   showDetailModal.value = false
   apartmentDetail.value = null
   ownerInfoExtra.value = null
+  statusDraft.value = ''
 }
 
 async function openApartmentDetail(row: ApartmentListItemDto) {
   showDetailModal.value = true
   apartmentDetail.value = null
   ownerInfoExtra.value = null
+  statusDraft.value = ''
   detailLoading.value = true
   try {
     apartmentDetail.value = await getApartmentDetail(row.id)
+    statusDraft.value = apartmentDetail.value.status?.trim() ?? ''
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Không tải được chi tiết căn hộ.')
     showDetailModal.value = false
@@ -515,9 +578,36 @@ onMounted(async () => {
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</dt>
               <dd class="font-medium text-on-surface">{{ displayField(apartmentDetail.code) }}</dd>
             </div>
-            <div>
+            <div class="sm:col-span-2">
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Trạng thái</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.status) }}</dd>
+              <dd class="mt-1 text-on-surface">{{ displayField(apartmentDetail.status) }}</dd>
+              <div class="mt-3 rounded-xl border border-outline-variant/20 bg-surface-container-low/80 p-3">
+                <p class="mb-2 text-xs font-semibold text-on-surface">Đổi trạng thái nhanh</p>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    v-model="statusDraft"
+                    class="min-w-0 flex-1 rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option v-for="opt in statusSelectOptions" :key="opt.value" :value="opt.value">
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
+                    :disabled="
+                      statusPatching ||
+                      statusDraft.trim() === (apartmentDetail.status ?? '').trim()
+                    "
+                    @click="submitStatusChange"
+                  >
+                    {{ statusPatching ? 'Đang lưu…' : 'Cập nhật' }}
+                  </button>
+                </div>
+                <p class="mt-2 text-[11px] text-on-surface-variant">
+                  Cập nhật nhanh trạng thái (Admin, Manager hoặc Staff).
+                </p>
+              </div>
             </div>
             <div>
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Dự án</dt>
