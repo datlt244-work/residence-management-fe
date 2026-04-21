@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
 import {
+  bulkDeleteApartments,
   getApartmentDetail,
   getApartmentOwnerInfo,
   listApartments,
@@ -19,6 +21,7 @@ import type {
 import type { ProjectManagementSidebarDto } from '@/types/project'
 
 const toast = useToast()
+const { confirm } = useConfirm()
 const auth = useAuthStore()
 
 const canLoadOwnerSensitive = computed(() => {
@@ -46,6 +49,7 @@ const moveTargetProjectId = ref('')
 const moveTargetZoneId = ref('')
 const moveTargetAptTypeId = ref('')
 const moveSubmitting = ref(false)
+const bulkDeleteSubmitting = ref(false)
 
 const showDetailModal = ref(false)
 const detailLoading = ref(false)
@@ -424,8 +428,35 @@ async function submitMoveApartments() {
   }
 }
 
-function onBulkDelete() {
-  toast.info('Xóa hàng loạt — tính năng sắp ra mắt.')
+const BULK_DELETE_MAX = 500
+
+async function onBulkDelete() {
+  const ids = [...selectedApartmentIds.value]
+  if (!ids.length) {
+    toast.info('Chọn ít nhất một căn (ô trên thẻ) rồi bấm Xóa.')
+    return
+  }
+  if (ids.length > BULK_DELETE_MAX) {
+    toast.error(`Chỉ xóa tối đa ${BULK_DELETE_MAX} căn mỗi lần. Đang chọn ${ids.length} căn.`)
+    return
+  }
+  const ok = await confirm({
+    title: 'Xóa căn hộ (soft delete)',
+    message: `Gắn cờ xóa ${ids.length} căn đã chọn? Căn sẽ không còn hiển thị trong danh sách thông thường.`,
+  })
+  if (!ok) return
+  bulkDeleteSubmitting.value = true
+  try {
+    const result = await bulkDeleteApartments({ apartmentIds: ids })
+    const n = result.deletedCount
+    toast.success(n != null ? `Đã xóa ${n} căn.` : 'Đã xóa căn hộ.')
+    selectedApartmentIds.value = []
+    await load()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không xóa được căn hộ.')
+  } finally {
+    bulkDeleteSubmitting.value = false
+  }
 }
 
 function mergeApartmentInList(updated: ApartmentListItemDto) {
@@ -636,11 +667,12 @@ onMounted(async () => {
             </button>
             <button
               type="button"
-              class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl bg-error-container px-5 py-3.5 font-bold text-on-error-container transition-all hover:opacity-90"
+              class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl bg-error-container px-5 py-3.5 font-bold text-on-error-container transition-all hover:opacity-90 disabled:opacity-50"
+              :disabled="bulkDeleteSubmitting"
               @click="onBulkDelete"
             >
               <span class="material-symbols-outlined text-[20px]">delete</span>
-              Xóa
+              {{ bulkDeleteSubmitting ? 'Đang xóa…' : 'Xóa' }}
             </button>
           </div>
         </div>

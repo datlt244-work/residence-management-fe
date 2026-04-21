@@ -3,6 +3,8 @@ import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
   ApartmentOwnerInfoDto,
+  BulkDeleteApartmentsCommand,
+  BulkDeleteApartmentsResultDto,
   MoveApartmentsRequest,
   MoveApartmentsResultDto,
   PageResultApartmentListItemDto,
@@ -73,5 +75,16 @@ export async function moveApartments(body: MoveApartmentsRequest): Promise<MoveA
     body: JSON.stringify(body),
   })
   const json = await parseJsonResponse<MoveApartmentsResultDto>(res)
+  return json.data
+}
+
+export async function bulkDeleteApartments(
+  body: BulkDeleteApartmentsCommand,
+): Promise<BulkDeleteApartmentsResultDto> {
+  const res = await apiFetch('/apartments/bulk-delete', {
+    method: 'DELETE',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<BulkDeleteApartmentsResultDto>(res)
   return json.data
 }

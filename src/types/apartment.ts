@@ -74,3 +74,12 @@ export interface MoveApartmentsRequest {
 export interface MoveApartmentsResultDto {
   movedCount?: number
 }
+
+/** DELETE /apartments/bulk-delete — soft delete, tối đa 500 id mỗi lần. */
+export interface BulkDeleteApartmentsCommand {
+  apartmentIds: string[]
+}
+
+export interface BulkDeleteApartmentsResultDto {
+  deletedCount?: number
+}
