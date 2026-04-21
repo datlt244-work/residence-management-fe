@@ -1,5 +1,9 @@
 import { apiFetch, parseJsonResponse } from '@/utils/http'
-import type { ApartmentAdminDto, PageResultApartmentListItemDto } from '@/types/apartment'
+import type {
+  ApartmentAdminDto,
+  ApartmentOwnerInfoDto,
+  PageResultApartmentListItemDto,
+} from '@/types/apartment'
 
 export interface ListApartmentsParams {
   page?: number
@@ -28,5 +32,11 @@ export async function listApartments(
 export async function getApartmentDetail(id: string): Promise<ApartmentAdminDto> {
   const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`)
   const json = await parseJsonResponse<ApartmentAdminDto>(res)
+  return json.data
+}
+
+export async function getApartmentOwnerInfo(id: string): Promise<ApartmentOwnerInfoDto> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/owner-info`)
+  const json = await parseJsonResponse<ApartmentOwnerInfoDto>(res)
   return json.data
 }

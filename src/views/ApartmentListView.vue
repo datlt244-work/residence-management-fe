@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
-import { getApartmentDetail, listApartments } from '@/services/apartment.service'
+import { useAuthStore } from '@/stores/auth'
+import { getApartmentDetail, getApartmentOwnerInfo, listApartments } from '@/services/apartment.service'
 import { listProjectsManagement } from '@/services/project.service'
-import type { ApartmentAdminDto, ApartmentListItemDto } from '@/types/apartment'
+import type { ApartmentAdminDto, ApartmentListItemDto, ApartmentOwnerInfoDto } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
 
 const toast = useToast()
+const auth = useAuthStore()
+
+const canLoadOwnerSensitive = computed(() => {
+  const r = auth.user?.role?.toUpperCase()
+  return r === 'ADMIN' || r === 'MANAGER'
+})
 
 const loading = ref(true)
 const projectsTree = ref<ProjectManagementSidebarDto[]>([])
@@ -24,6 +31,8 @@ const items = ref<ApartmentListItemDto[]>([])
 const showDetailModal = ref(false)
 const detailLoading = ref(false)
 const apartmentDetail = ref<ApartmentAdminDto | null>(null)
+const ownerInfoExtra = ref<ApartmentOwnerInfoDto | null>(null)
+const ownerInfoLoading = ref(false)
 
 const zoneOptions = computed(() => {
   const p = projectsTree.value.find((x) => x.id === filterProjectId.value)
@@ -86,6 +95,30 @@ function formatDt(iso: string | undefined) {
 function displayField(v: string | null | undefined) {
   if (v == null || v === '') return '—'
   return v
+}
+
+function displayOwnerPhone() {
+  if (ownerInfoExtra.value) return displayField(ownerInfoExtra.value.ownerPhone)
+  return displayField(apartmentDetail.value?.ownerPhone)
+}
+
+function displaySource() {
+  if (ownerInfoExtra.value) return displayField(ownerInfoExtra.value.source)
+  return displayField(apartmentDetail.value?.source)
+}
+
+async function loadOwnerSensitive() {
+  const id = apartmentDetail.value?.id
+  if (!id) return
+  ownerInfoLoading.value = true
+  try {
+    ownerInfoExtra.value = await getApartmentOwnerInfo(id)
+    toast.success('Đã tải SĐT chủ & nguồn.')
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không tải được thông tin chủ & nguồn.')
+  } finally {
+    ownerInfoLoading.value = false
+  }
 }
 
 function statusBadge(raw: string | undefined) {
@@ -202,11 +235,13 @@ function onBulkDelete() {
 function closeApartmentDetail() {
   showDetailModal.value = false
   apartmentDetail.value = null
+  ownerInfoExtra.value = null
 }
 
 async function openApartmentDetail(row: ApartmentListItemDto) {
   showDetailModal.value = true
   apartmentDetail.value = null
+  ownerInfoExtra.value = null
   detailLoading.value = true
   try {
     apartmentDetail.value = await getApartmentDetail(row.id)
@@ -522,7 +557,7 @@ onMounted(async () => {
             </div>
             <div>
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">SĐT chủ</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.ownerPhone) }}</dd>
+              <dd class="text-on-surface">{{ displayOwnerPhone() }}</dd>
             </div>
             <div>
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Liên hệ chủ</dt>
@@ -530,7 +565,23 @@ onMounted(async () => {
             </div>
             <div class="sm:col-span-2">
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Nguồn</dt>
-              <dd class="text-on-surface">{{ displayField(apartmentDetail.source) }}</dd>
+              <dd class="text-on-surface">{{ displaySource() }}</dd>
+            </div>
+            <div v-if="canLoadOwnerSensitive && apartmentDetail" class="sm:col-span-2">
+              <div class="rounded-xl border border-outline-variant/20 bg-surface-container-low/80 p-3">
+                <p class="mb-2 text-xs text-on-surface-variant">
+                  SĐT chủ và nguồn đầy đủ chỉ dành cho Admin/Manager (API owner-info).
+                </p>
+                <button
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-on-primary disabled:opacity-60"
+                  :disabled="ownerInfoLoading"
+                  @click="loadOwnerSensitive"
+                >
+                  <span class="material-symbols-outlined text-[18px]">lock_open</span>
+                  {{ ownerInfoLoading ? 'Đang tải…' : ownerInfoExtra ? 'Tải lại thông tin nhạy cảm' : 'Tải SĐT chủ & nguồn' }}
+                </button>
+              </div>
             </div>
             <div>
               <dt class="text-xs font-semibold uppercase text-on-surface-variant">Tạo lúc</dt>

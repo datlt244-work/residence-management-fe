@@ -35,3 +35,9 @@ export interface ApartmentAdminDto extends ApartmentListItemDto {
   ownerContact?: string | null
   source?: string | null
 }
+
+/** GET /apartments/{id}/owner-info — chỉ SĐT chủ & nguồn; ADMIN/MANAGER. */
+export interface ApartmentOwnerInfoDto {
+  ownerPhone?: string | null
+  source?: string | null
+}
