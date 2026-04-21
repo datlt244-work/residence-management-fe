@@ -6,6 +6,7 @@ import {
   getApartmentDetail,
   getApartmentOwnerInfo,
   listApartments,
+  moveApartments,
   patchApartmentStatus,
 } from '@/services/apartment.service'
 import { listProjectsManagement } from '@/services/project.service'
@@ -32,6 +33,14 @@ const pageSize = ref(12)
 const totalPages = ref(0)
 const totalElements = ref(0)
 const items = ref<ApartmentListItemDto[]>([])
+
+/** Di chuyển hàng loạt — POST /apartments/move */
+const selectedApartmentIds = ref<string[]>([])
+const showMoveModal = ref(false)
+const moveTargetProjectId = ref('')
+const moveTargetZoneId = ref('')
+const moveTargetAptTypeId = ref('')
+const moveSubmitting = ref(false)
 
 const showDetailModal = ref(false)
 const detailLoading = ref(false)
@@ -70,6 +79,21 @@ const aptTypeOptions = computed(() => {
   return z?.apartmentTypes ?? []
 })
 
+const moveTargetZoneOptions = computed(() => {
+  const p = projectsTree.value.find((x) => x.id === moveTargetProjectId.value)
+  return p?.zones ?? []
+})
+
+const moveTargetAptTypeOptions = computed(() => {
+  const z = moveTargetZoneOptions.value.find((x) => x.id === moveTargetZoneId.value)
+  return z?.apartmentTypes ?? []
+})
+
+const allOnPageSelected = computed(() => {
+  if (!items.value.length) return false
+  return items.value.every((x) => selectedApartmentIds.value.includes(x.id))
+})
+
 watch(filterProjectId, () => {
   filterZoneId.value = ''
   filterAptTypeId.value = ''
@@ -77,6 +101,15 @@ watch(filterProjectId, () => {
 
 watch(filterZoneId, () => {
   filterAptTypeId.value = ''
+})
+
+watch(moveTargetProjectId, () => {
+  moveTargetZoneId.value = ''
+  moveTargetAptTypeId.value = ''
+})
+
+watch(moveTargetZoneId, () => {
+  moveTargetAptTypeId.value = ''
 })
 
 const heroGradients = [
@@ -250,8 +283,71 @@ function onAdd() {
   toast.info('Thêm căn hộ — tính năng sắp ra mắt.')
 }
 
+function toggleSelectApartment(id: string) {
+  const arr = [...selectedApartmentIds.value]
+  const i = arr.indexOf(id)
+  if (i >= 0) arr.splice(i, 1)
+  else arr.push(id)
+  selectedApartmentIds.value = arr
+}
+
+function isApartmentSelected(id: string) {
+  return selectedApartmentIds.value.includes(id)
+}
+
+function toggleSelectAllOnPage() {
+  const ids = items.value.map((x) => x.id)
+  if (!ids.length) return
+  if (allOnPageSelected.value) {
+    const drop = new Set(ids)
+    selectedApartmentIds.value = selectedApartmentIds.value.filter((id) => !drop.has(id))
+  } else {
+    selectedApartmentIds.value = [...new Set([...selectedApartmentIds.value, ...ids])]
+  }
+}
+
 function onMove() {
-  toast.info('Di chuyển căn — tính năng sắp ra mắt.')
+  if (!selectedApartmentIds.value.length) {
+    toast.info('Chọn ít nhất một căn (ô trên thẻ) rồi bấm Di chuyển.')
+    return
+  }
+  moveTargetProjectId.value = ''
+  moveTargetZoneId.value = ''
+  moveTargetAptTypeId.value = ''
+  showMoveModal.value = true
+}
+
+function closeMoveModal() {
+  showMoveModal.value = false
+}
+
+async function submitMoveApartments() {
+  const ids = [...selectedApartmentIds.value]
+  if (!ids.length) {
+    toast.error('Không có căn nào được chọn.')
+    return
+  }
+  if (!moveTargetZoneId.value || !moveTargetAptTypeId.value) {
+    toast.error('Chọn dự án → phân khu → loại căn đích.')
+    return
+  }
+  moveSubmitting.value = true
+  try {
+    const result = await moveApartments({
+      apartmentIds: ids,
+      targetZoneId: moveTargetZoneId.value,
+      targetApartmentTypeId: moveTargetAptTypeId.value,
+    })
+    const n = result.movedCount
+    toast.success(n != null ? `Đã di chuyển ${n} căn.` : 'Đã di chuyển căn hộ.')
+    closeMoveModal()
+    selectedApartmentIds.value = []
+    await load()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không di chuyển được căn hộ.')
+  } finally {
+    moveSubmitting.value = false
+  }
 }
 
 function onBulkDelete() {
@@ -435,6 +531,15 @@ onMounted(async () => {
           </div>
           <div class="no-scrollbar flex items-center gap-3 overflow-x-auto pb-1">
             <button
+              v-if="items.length && !loading"
+              type="button"
+              class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl border border-outline-variant/40 px-4 py-3.5 text-sm font-bold text-on-surface-variant transition-all hover:bg-surface-container-low"
+              @click="toggleSelectAllOnPage"
+            >
+              <span class="material-symbols-outlined text-[20px]">select_all</span>
+              {{ allOnPageSelected ? 'Bỏ chọn trang' : 'Chọn tất cả trang' }}
+            </button>
+            <button
               type="button"
               class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl bg-primary px-5 py-3.5 font-bold text-on-primary shadow-lg shadow-primary/20 transition-transform active:scale-95"
               @click="onAdd"
@@ -444,11 +549,16 @@ onMounted(async () => {
             </button>
             <button
               type="button"
-              class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl bg-surface-container-highest px-5 py-3.5 font-bold text-primary transition-all hover:bg-surface-variant"
+              class="relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-2xl bg-surface-container-highest px-5 py-3.5 font-bold text-primary transition-all hover:bg-surface-variant"
               @click="onMove"
             >
               <span class="material-symbols-outlined text-[20px]">move_item</span>
               Di chuyển
+              <span
+                v-if="selectedApartmentIds.length"
+                class="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-black text-on-primary"
+                >{{ selectedApartmentIds.length }}</span
+              >
             </button>
             <button
               type="button"
@@ -488,6 +598,18 @@ onMounted(async () => {
               :class="badgeClass(apt)"
             >
               {{ badgeFor(apt).label }}
+            </div>
+            <div class="absolute top-4 right-4 z-10" @click.stop>
+              <label
+                class="flex cursor-pointer items-center justify-center rounded-full bg-black/40 p-1.5 shadow-sm backdrop-blur-sm"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-white/60 text-primary focus:ring-2 focus:ring-primary/40"
+                  :checked="isApartmentSelected(apt.id)"
+                  @change="toggleSelectApartment(apt.id)"
+                />
+              </label>
             </div>
             <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/60 to-transparent p-4">
               <p class="font-headline text-lg font-bold text-white">{{ cardDisplayName(apt) }}</p>
@@ -691,6 +813,81 @@ onMounted(async () => {
             @click="closeApartmentDetail"
           >
             Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- POST /apartments/move -->
+    <div
+      v-if="showMoveModal"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="apt-move-title"
+      @click.self="closeMoveModal"
+    >
+      <div
+        class="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-xl"
+        @click.stop
+      >
+        <h2 id="apt-move-title" class="font-headline text-lg font-bold text-on-surface">Di chuyển căn hộ</h2>
+        <p class="mt-1 text-xs text-on-surface-variant">
+          Chọn phân khu và loại căn đích (loại phải thuộc phân khu). Đang chọn
+          <strong>{{ selectedApartmentIds.length }}</strong> căn.
+        </p>
+
+        <div class="mt-4 space-y-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Dự án đích</label>
+            <select
+              v-model="moveTargetProjectId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="" disabled>Chọn dự án</option>
+              <option v-for="p in projectsTree" :key="p.id" :value="p.id">{{ p.name }} ({{ p.code }})</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Phân khu đích</label>
+            <select
+              v-model="moveTargetZoneId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              :disabled="!moveTargetProjectId"
+            >
+              <option value="" disabled>Chọn phân khu</option>
+              <option v-for="z in moveTargetZoneOptions" :key="z.id" :value="z.id">{{ z.name }} ({{ z.code || '—' }})</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase text-on-surface-variant">Loại căn đích</label>
+            <select
+              v-model="moveTargetAptTypeId"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50"
+              :disabled="!moveTargetZoneId"
+            >
+              <option value="" disabled>Chọn loại căn</option>
+              <option v-for="t in moveTargetAptTypeOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low"
+            :disabled="moveSubmitting"
+            @click="closeMoveModal"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
+            :disabled="moveSubmitting || !moveTargetZoneId || !moveTargetAptTypeId"
+            @click="submitMoveApartments"
+          >
+            {{ moveSubmitting ? 'Đang xử lý…' : 'Xác nhận di chuyển' }}
           </button>
         </div>
       </div>

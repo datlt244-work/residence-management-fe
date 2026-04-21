@@ -46,3 +46,14 @@ export interface ApartmentOwnerInfoDto {
 export interface UpdateApartmentStatusCommand {
   status: string
 }
+
+/** POST /apartments/move */
+export interface MoveApartmentsRequest {
+  apartmentIds: string[]
+  targetZoneId: string
+  targetApartmentTypeId: string
+}
+
+export interface MoveApartmentsResultDto {
+  movedCount?: number
+}

@@ -3,6 +3,8 @@ import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
   ApartmentOwnerInfoDto,
+  MoveApartmentsRequest,
+  MoveApartmentsResultDto,
   PageResultApartmentListItemDto,
   UpdateApartmentStatusCommand,
 } from '@/types/apartment'
@@ -52,5 +54,14 @@ export async function patchApartmentStatus(
     body: JSON.stringify(body),
   })
   const json = await parseJsonResponse<ApartmentListItemDto>(res)
+  return json.data
+}
+
+export async function moveApartments(body: MoveApartmentsRequest): Promise<MoveApartmentsResultDto> {
+  const res = await apiFetch('/apartments/move', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  const json = await parseJsonResponse<MoveApartmentsResultDto>(res)
   return json.data
 }
