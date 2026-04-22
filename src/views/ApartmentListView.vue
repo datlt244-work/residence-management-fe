@@ -19,6 +19,7 @@ import type {
   ApartmentListItemDto,
   ApartmentMediaItemDto,
   ApartmentOwnerInfoDto,
+  PageResultApartmentListItemDto,
   UpdateApartmentCommand,
 } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
@@ -232,6 +233,7 @@ async function onApartmentMediaUploaded(created: ApartmentMediaItemDto) {
     mediaItems.value = await listApartmentMedia(id)
     const i = created.id ? mediaItems.value.findIndex((x) => x.id === created.id) : -1
     galleryInitialIndex.value = i >= 0 ? i : Math.max(0, mediaItems.value.length - 1)
+    if (created.primary) await refetchApartmentListInPlace()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
   }
@@ -241,11 +243,12 @@ async function onApartmentMediaDeleted(removedIndex: number) {
   const id = mediaGalleryTitleRow.value?.id
   if (!id) return
   try {
-    mediaItems.value = await listApartmentMedia(id)
-    const len = mediaItems.value.length
+    const [list] = await Promise.all([listApartmentMedia(id), refetchApartmentListInPlace()])
+    mediaItems.value = list
+    const len = list.length
     galleryInitialIndex.value = len ? Math.min(Math.max(removedIndex, 0), len - 1) : 0
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media / căn.')
   }
 }
 
@@ -253,11 +256,12 @@ async function onApartmentMediaPrimarySet(mediaId: string) {
   const id = mediaGalleryTitleRow.value?.id
   if (!id) return
   try {
-    mediaItems.value = await listApartmentMedia(id)
-    const i = mediaItems.value.findIndex((x) => x.id === mediaId)
+    const [list] = await Promise.all([listApartmentMedia(id), refetchApartmentListInPlace()])
+    mediaItems.value = list
+    const i = list.findIndex((x) => x.id === mediaId)
     galleryInitialIndex.value = i >= 0 ? i : 0
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media / căn.')
   }
 }
 
@@ -387,17 +391,35 @@ async function loadProjectsTree() {
   }
 }
 
+function apartmentsListParams() {
+  return {
+    page: page.value,
+    size: pageSize.value,
+    search: searchQuery.value.trim() || undefined,
+    projectId: filterProjectId.value || undefined,
+    zoneId: filterZoneId.value || undefined,
+    apartmentTypeId: filterAptTypeId.value || undefined,
+  }
+}
+
+async function fetchApartmentsPage(): Promise<PageResultApartmentListItemDto> {
+  return listApartments(apartmentsListParams())
+}
+
+/** Làm mới danh sách căn (cùng trang / filter) — không bật skeleton; dùng sau PATCH primary để cập nhật `primaryMediaUrl`. */
+async function refetchApartmentListInPlace() {
+  const data = await fetchApartmentsPage()
+  items.value = data.content
+  totalPages.value = data.totalPages
+  totalElements.value = data.totalElements
+  page.value = data.pageNumber
+  pageSize.value = data.pageSize
+}
+
 async function load() {
   loading.value = true
   try {
-    const data = await listApartments({
-      page: page.value,
-      size: pageSize.value,
-      search: searchQuery.value.trim() || undefined,
-      projectId: filterProjectId.value || undefined,
-      zoneId: filterZoneId.value || undefined,
-      apartmentTypeId: filterAptTypeId.value || undefined,
-    })
+    const data = await fetchApartmentsPage()
     items.value = data.content
     totalPages.value = data.totalPages
     totalElements.value = data.totalElements
@@ -781,15 +803,28 @@ onMounted(async () => {
               aria-label="Xem ảnh và video căn hộ"
               @click="openApartmentMediaFromList(apt)"
             />
-            <div
-              class="pointer-events-none absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
-              :class="heroGradients[idx % heroGradients.length]"
-            />
-            <div
-              class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
-            >
-              <span class="material-symbols-outlined text-[120px] text-primary">apartment</span>
-            </div>
+            <template v-if="apt.primaryMediaUrl?.trim()">
+              <img
+                :src="apt.primaryMediaUrl"
+                :alt="cardDisplayName(apt)"
+                class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                loading="lazy"
+              />
+              <div
+                class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10"
+              />
+            </template>
+            <template v-else>
+              <div
+                class="pointer-events-none absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
+                :class="heroGradients[idx % heroGradients.length]"
+              />
+              <div
+                class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
+              >
+                <span class="material-symbols-outlined text-[120px] text-primary">apartment</span>
+              </div>
+            </template>
             <div
               class="pointer-events-none absolute top-4 left-4 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
               :class="badgeClass(apt)"

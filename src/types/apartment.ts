@@ -19,6 +19,8 @@ export interface ApartmentListItemDto {
   status?: string
   createdAt?: string
   updatedAt?: string
+  /** Presigned GET ảnh/video primary (list); null nếu chưa chọn. */
+  primaryMediaUrl?: string | null
 }
 
 export interface PageResultApartmentListItemDto {
