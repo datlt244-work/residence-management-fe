@@ -35,12 +35,21 @@ export interface ApartmentAdminDto extends ApartmentListItemDto {
   ownerContact?: string | null
   source?: string | null
   note?: string | null
+  media?: ApartmentMediaItemDto[]
 }
 
 /** GET /apartments/{id}/owner-info — chỉ SĐT chủ & nguồn; ADMIN/MANAGER. */
 export interface ApartmentOwnerInfoDto {
   ownerPhone?: string | null
   source?: string | null
+}
+
+/** Ảnh / video căn — GET /apartments/{id}/media hoặc kèm trong chi tiết. */
+export interface ApartmentMediaItemDto {
+  url: string
+  kind: 'IMAGE' | 'VIDEO'
+  title?: string | null
+  thumbnailUrl?: string | null
 }
 
 /** PATCH /apartments/{id}/status */

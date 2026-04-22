@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
+import ApartmentMediaGallery from '@/components/ApartmentMediaGallery.vue'
 import {
   bulkDeleteApartments,
   getApartmentDetail,
@@ -15,10 +16,30 @@ import { listProjectsManagement } from '@/services/project.service'
 import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
+  ApartmentMediaItemDto,
   ApartmentOwnerInfoDto,
   UpdateApartmentCommand,
 } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
+
+/** Giao diện mẫu — thay bằng dữ liệu từ API khi backend có GET /apartments/{id}/media. */
+const DEMO_APARTMENT_MEDIA: ApartmentMediaItemDto[] = [
+  { url: 'https://picsum.photos/seed/rm-living/1200/900', kind: 'IMAGE', title: 'Phòng khách' },
+  { url: 'https://picsum.photos/seed/rm-kitchen/1200/900', kind: 'IMAGE', title: 'Nhà bếp' },
+  { url: 'https://picsum.photos/seed/rm-bed/1200/900', kind: 'IMAGE', title: 'Phòng ngủ' },
+  {
+    url: 'https://www.w3schools.com/html/mov_bbb.mp4',
+    kind: 'VIDEO',
+    title: 'Video căn mẫu',
+    thumbnailUrl: 'https://picsum.photos/seed/rm-vid/800/600',
+  },
+  { url: 'https://picsum.photos/seed/rm-bath/1200/900', kind: 'IMAGE', title: 'Phòng tắm' },
+  { url: 'https://picsum.photos/seed/rm-view/1200/900', kind: 'IMAGE', title: 'View ban công' },
+  { url: 'https://picsum.photos/seed/rm-hall/1200/900', kind: 'IMAGE', title: 'Hành lang' },
+  { url: 'https://picsum.photos/seed/rm-dining/1200/900', kind: 'IMAGE', title: 'Khu ăn' },
+  { url: 'https://picsum.photos/seed/rm-study/1200/900', kind: 'IMAGE', title: 'Làm việc tại nhà' },
+  { url: 'https://picsum.photos/seed/rm-extra/1200/900', kind: 'IMAGE', title: 'Không gian phụ' },
+]
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -70,6 +91,21 @@ const ownerPhoneDraft = ref('')
 const ownerContactDraft = ref('')
 const sourceDraft = ref('')
 const apartmentSaving = ref(false)
+
+/** Ảnh / video — mở từ thẻ danh sách (dữ liệu mẫu, chưa API). */
+const mediaItems = ref<ApartmentMediaItemDto[]>([])
+const showMediaGallery = ref(false)
+const galleryInitialIndex = ref(0)
+const mediaGalleryTitleRow = ref<ApartmentListItemDto | null>(null)
+
+const mediaGalleryHeadline = computed(() => {
+  const row = mediaGalleryTitleRow.value
+  if (!row) return 'Ảnh & video căn hộ'
+  const code = row.code?.trim()
+  const name = row.apartmentTypeName?.trim()
+  if (code && name) return `${code} — ${name}`
+  return code || name || 'Ảnh & video căn hộ'
+})
 
 /** Giá trị status gợi ý — chỉnh nếu backend dùng mã khác. */
 const STATUS_QUICK_OPTIONS = [
@@ -174,6 +210,23 @@ function formatDt(iso: string | undefined) {
 function displayField(v: string | null | undefined) {
   if (v == null || v === '') return '—'
   return v
+}
+
+function applyDemoApartmentMedia() {
+  mediaItems.value = DEMO_APARTMENT_MEDIA.map((m) => ({ ...m }))
+}
+
+function openApartmentMediaFromList(apt: ApartmentListItemDto, startIndex = 0) {
+  mediaGalleryTitleRow.value = apt
+  applyDemoApartmentMedia()
+  galleryInitialIndex.value = startIndex
+  showMediaGallery.value = true
+}
+
+function closeMediaGallery() {
+  showMediaGallery.value = false
+  mediaItems.value = []
+  mediaGalleryTitleRow.value = null
 }
 
 function clearEditDrafts() {
@@ -690,17 +743,23 @@ onMounted(async () => {
           class="group flex flex-col overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest transition-all duration-500 hover:shadow-2xl"
         >
           <div class="relative h-48 overflow-hidden">
+            <button
+              type="button"
+              class="absolute inset-0 z-[1] cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              aria-label="Xem ảnh và video căn hộ"
+              @click="openApartmentMediaFromList(apt)"
+            />
             <div
-              class="absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
+              class="pointer-events-none absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
               :class="heroGradients[idx % heroGradients.length]"
             />
             <div
-              class="absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
+              class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
             >
               <span class="material-symbols-outlined text-[120px] text-primary">apartment</span>
             </div>
             <div
-              class="absolute top-4 left-4 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
+              class="pointer-events-none absolute top-4 left-4 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
               :class="badgeClass(apt)"
             >
               {{ badgeFor(apt).label }}
@@ -717,7 +776,15 @@ onMounted(async () => {
                 />
               </label>
             </div>
-            <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/60 to-transparent p-4">
+            <div
+              class="pointer-events-none absolute bottom-3 right-3 z-[2] flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/95 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+            >
+              <span class="material-symbols-outlined text-[14px]">photo_library</span>
+              Ảnh &amp; video
+            </div>
+            <div
+              class="pointer-events-none absolute bottom-0 left-0 z-[2] w-full bg-gradient-to-t from-black/60 to-transparent p-4"
+            >
               <p class="font-headline text-lg font-bold text-white">{{ cardDisplayName(apt) }}</p>
               <p v-if="cardSubtitle(apt)" class="mt-0.5 truncate text-xs text-white/85">{{ cardSubtitle(apt) }}</p>
             </div>
@@ -808,6 +875,7 @@ onMounted(async () => {
               {{ displayField(apartmentDetail.zoneName ?? apartmentDetail.zoneCode) }} ·
               {{ displayField(apartmentDetail.apartmentTypeName ?? apartmentDetail.apartmentTypeCode) }}
             </div>
+
             <div>
               <label class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</label>
               <input
@@ -1045,5 +1113,14 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <ApartmentMediaGallery
+      :show="showMediaGallery"
+      :items="mediaItems"
+      :loading="false"
+      :headline="mediaGalleryHeadline"
+      :initial-index="galleryInitialIndex"
+      @close="closeMediaGallery"
+    />
   </div>
 </template>
