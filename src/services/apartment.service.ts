@@ -2,6 +2,7 @@ import { apiFetch, parseJsonResponse } from '@/utils/http'
 import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
+  ApartmentMediaItemDto,
   ApartmentOwnerInfoDto,
   BulkDeleteApartmentsCommand,
   BulkDeleteApartmentsResultDto,
@@ -10,6 +11,7 @@ import type {
   PageResultApartmentListItemDto,
   UpdateApartmentCommand,
   UpdateApartmentStatusCommand,
+  UploadApartmentMediaParams,
 } from '@/types/apartment'
 
 export interface ListApartmentsParams {
@@ -39,6 +41,53 @@ export async function listApartments(
 export async function getApartmentDetail(id: string): Promise<ApartmentAdminDto> {
   const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`)
   const json = await parseJsonResponse<ApartmentAdminDto>(res)
+  return json.data
+}
+
+export async function listApartmentMedia(id: string): Promise<ApartmentMediaItemDto[]> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/media`)
+  const json = await parseJsonResponse<ApartmentMediaItemDto[]>(res)
+  const list = Array.isArray(json.data) ? json.data : []
+  return [...list].sort((a, b) => {
+    if (a.primary && !b.primary) return -1
+    if (!a.primary && b.primary) return 1
+    return (a.order ?? 0) - (b.order ?? 0)
+  })
+}
+
+export async function uploadApartmentMedia(
+  id: string,
+  params: UploadApartmentMediaParams,
+): Promise<ApartmentMediaItemDto> {
+  const fd = new FormData()
+  fd.append('file', params.file)
+  if (params.mediaType) {
+    fd.append('mediaType', params.mediaType)
+  }
+  if (params.primary === true) {
+    fd.append('primary', 'true')
+  }
+  if (params.displayOrder != null) {
+    fd.append('displayOrder', String(params.displayOrder))
+  }
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/media`, {
+    method: 'POST',
+    body: fd,
+  })
+  const json = await parseJsonResponse<ApartmentMediaItemDto>(res)
+  return json.data
+}
+
+/** DELETE /api/media/{mediaId} — OpenAPI `deleteApartmentMedia`; ADMIN/MANAGER (theo backend). */
+export async function deleteApartmentMedia(mediaId: string): Promise<void> {
+  const res = await apiFetch(`/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' })
+  await parseJsonResponse<void>(res)
+}
+
+/** PATCH /api/media/{mediaId}/primary — OpenAPI `setApartmentMediaPrimary`; ADMIN/MANAGER (theo backend). */
+export async function setApartmentMediaPrimary(mediaId: string): Promise<ApartmentMediaItemDto> {
+  const res = await apiFetch(`/media/${encodeURIComponent(mediaId)}/primary`, { method: 'PATCH' })
+  const json = await parseJsonResponse<ApartmentMediaItemDto>(res)
   return json.data
 }
 

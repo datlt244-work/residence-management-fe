@@ -3,11 +3,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
 import { useAuthStore } from '@/stores/auth'
+import ApartmentMediaGallery from '@/components/ApartmentMediaGallery.vue'
 import {
   bulkDeleteApartments,
   getApartmentDetail,
   getApartmentOwnerInfo,
   listApartments,
+  listApartmentMedia,
   moveApartments,
   updateApartment,
 } from '@/services/apartment.service'
@@ -15,7 +17,9 @@ import { listProjectsManagement } from '@/services/project.service'
 import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
+  ApartmentMediaItemDto,
   ApartmentOwnerInfoDto,
+  PageResultApartmentListItemDto,
   UpdateApartmentCommand,
 } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
@@ -25,8 +29,14 @@ const { confirm } = useConfirm()
 const auth = useAuthStore()
 
 const canLoadOwnerSensitive = computed(() => {
-  const r = auth.user?.role?.toUpperCase()
+  const r = auth.user?.role?.trim().toUpperCase()
   return r === 'ADMIN' || r === 'MANAGER'
+})
+
+/** Thêm / xóa ảnh & video căn — cùng nhóm được vào trang tồn kho (STAFF gồm). */
+const canManageApartmentMedia = computed(() => {
+  const r = auth.user?.role?.trim().toUpperCase()
+  return r === 'ADMIN' || r === 'MANAGER' || r === 'STAFF'
 })
 
 const loading = ref(true)
@@ -70,6 +80,22 @@ const ownerPhoneDraft = ref('')
 const ownerContactDraft = ref('')
 const sourceDraft = ref('')
 const apartmentSaving = ref(false)
+
+/** Ảnh / video — GET /apartments/{id}/media, mở từ thẻ danh sách. */
+const mediaItems = ref<ApartmentMediaItemDto[]>([])
+const mediaLoading = ref(false)
+const showMediaGallery = ref(false)
+const galleryInitialIndex = ref(0)
+const mediaGalleryTitleRow = ref<ApartmentListItemDto | null>(null)
+
+const mediaGalleryHeadline = computed(() => {
+  const row = mediaGalleryTitleRow.value
+  if (!row) return 'Ảnh & video căn hộ'
+  const code = row.code?.trim()
+  const name = row.apartmentTypeName?.trim()
+  if (code && name) return `${code} — ${name}`
+  return code || name || 'Ảnh & video căn hộ'
+})
 
 /** Giá trị status gợi ý — chỉnh nếu backend dùng mã khác. */
 const STATUS_QUICK_OPTIONS = [
@@ -174,6 +200,69 @@ function formatDt(iso: string | undefined) {
 function displayField(v: string | null | undefined) {
   if (v == null || v === '') return '—'
   return v
+}
+
+async function openApartmentMediaFromList(apt: ApartmentListItemDto, startIndex = 0) {
+  mediaGalleryTitleRow.value = apt
+  galleryInitialIndex.value = startIndex
+  showMediaGallery.value = true
+  mediaLoading.value = true
+  mediaItems.value = []
+  try {
+    mediaItems.value = await listApartmentMedia(apt.id)
+  } catch (e) {
+    showMediaGallery.value = false
+    mediaGalleryTitleRow.value = null
+    toast.error(e instanceof Error ? e.message : 'Không tải được ảnh & video căn hộ.')
+  } finally {
+    mediaLoading.value = false
+  }
+}
+
+function closeMediaGallery() {
+  showMediaGallery.value = false
+  mediaLoading.value = false
+  mediaItems.value = []
+  mediaGalleryTitleRow.value = null
+}
+
+async function onApartmentMediaUploaded(created: ApartmentMediaItemDto) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    mediaItems.value = await listApartmentMedia(id)
+    const i = created.id ? mediaItems.value.findIndex((x) => x.id === created.id) : -1
+    galleryInitialIndex.value = i >= 0 ? i : Math.max(0, mediaItems.value.length - 1)
+    if (created.primary) await refetchApartmentListInPlace()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+  }
+}
+
+async function onApartmentMediaDeleted(removedIndex: number) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    const [list] = await Promise.all([listApartmentMedia(id), refetchApartmentListInPlace()])
+    mediaItems.value = list
+    const len = list.length
+    galleryInitialIndex.value = len ? Math.min(Math.max(removedIndex, 0), len - 1) : 0
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media / căn.')
+  }
+}
+
+async function onApartmentMediaPrimarySet(mediaId: string) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    const [list] = await Promise.all([listApartmentMedia(id), refetchApartmentListInPlace()])
+    mediaItems.value = list
+    const i = list.findIndex((x) => x.id === mediaId)
+    galleryInitialIndex.value = i >= 0 ? i : 0
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media / căn.')
+  }
 }
 
 function clearEditDrafts() {
@@ -302,17 +391,35 @@ async function loadProjectsTree() {
   }
 }
 
+function apartmentsListParams() {
+  return {
+    page: page.value,
+    size: pageSize.value,
+    search: searchQuery.value.trim() || undefined,
+    projectId: filterProjectId.value || undefined,
+    zoneId: filterZoneId.value || undefined,
+    apartmentTypeId: filterAptTypeId.value || undefined,
+  }
+}
+
+async function fetchApartmentsPage(): Promise<PageResultApartmentListItemDto> {
+  return listApartments(apartmentsListParams())
+}
+
+/** Làm mới danh sách căn (cùng trang / filter) — không bật skeleton; dùng sau PATCH primary để cập nhật `primaryMediaUrl`. */
+async function refetchApartmentListInPlace() {
+  const data = await fetchApartmentsPage()
+  items.value = data.content
+  totalPages.value = data.totalPages
+  totalElements.value = data.totalElements
+  page.value = data.pageNumber
+  pageSize.value = data.pageSize
+}
+
 async function load() {
   loading.value = true
   try {
-    const data = await listApartments({
-      page: page.value,
-      size: pageSize.value,
-      search: searchQuery.value.trim() || undefined,
-      projectId: filterProjectId.value || undefined,
-      zoneId: filterZoneId.value || undefined,
-      apartmentTypeId: filterAptTypeId.value || undefined,
-    })
+    const data = await fetchApartmentsPage()
     items.value = data.content
     totalPages.value = data.totalPages
     totalElements.value = data.totalElements
@@ -690,17 +797,36 @@ onMounted(async () => {
           class="group flex flex-col overflow-hidden rounded-[2rem] border border-outline-variant/15 bg-surface-container-lowest transition-all duration-500 hover:shadow-2xl"
         >
           <div class="relative h-48 overflow-hidden">
-            <div
-              class="absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
-              :class="heroGradients[idx % heroGradients.length]"
+            <button
+              type="button"
+              class="absolute inset-0 z-[1] cursor-pointer border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              aria-label="Xem ảnh và video căn hộ"
+              @click="openApartmentMediaFromList(apt)"
             />
+            <template v-if="apt.primaryMediaUrl?.trim()">
+              <img
+                :src="apt.primaryMediaUrl"
+                :alt="cardDisplayName(apt)"
+                class="pointer-events-none absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                loading="lazy"
+              />
+              <div
+                class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-black/10"
+              />
+            </template>
+            <template v-else>
+              <div
+                class="pointer-events-none absolute inset-0 bg-gradient-to-br transition-transform duration-700 group-hover:scale-105"
+                :class="heroGradients[idx % heroGradients.length]"
+              />
+              <div
+                class="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
+              >
+                <span class="material-symbols-outlined text-[120px] text-primary">apartment</span>
+              </div>
+            </template>
             <div
-              class="absolute inset-0 flex items-center justify-center opacity-[0.12] transition-opacity group-hover:opacity-[0.18]"
-            >
-              <span class="material-symbols-outlined text-[120px] text-primary">apartment</span>
-            </div>
-            <div
-              class="absolute top-4 left-4 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
+              class="pointer-events-none absolute top-4 left-4 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider"
               :class="badgeClass(apt)"
             >
               {{ badgeFor(apt).label }}
@@ -717,7 +843,15 @@ onMounted(async () => {
                 />
               </label>
             </div>
-            <div class="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/60 to-transparent p-4">
+            <div
+              class="pointer-events-none absolute bottom-3 right-3 z-[2] flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/95 opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100"
+            >
+              <span class="material-symbols-outlined text-[14px]">photo_library</span>
+              Ảnh &amp; video
+            </div>
+            <div
+              class="pointer-events-none absolute bottom-0 left-0 z-[2] w-full bg-gradient-to-t from-black/60 to-transparent p-4"
+            >
               <p class="font-headline text-lg font-bold text-white">{{ cardDisplayName(apt) }}</p>
               <p v-if="cardSubtitle(apt)" class="mt-0.5 truncate text-xs text-white/85">{{ cardSubtitle(apt) }}</p>
             </div>
@@ -808,6 +942,7 @@ onMounted(async () => {
               {{ displayField(apartmentDetail.zoneName ?? apartmentDetail.zoneCode) }} ·
               {{ displayField(apartmentDetail.apartmentTypeName ?? apartmentDetail.apartmentTypeCode) }}
             </div>
+
             <div>
               <label class="text-xs font-semibold uppercase text-on-surface-variant">Mã căn</label>
               <input
@@ -1045,5 +1180,21 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+
+    <ApartmentMediaGallery
+      :show="showMediaGallery"
+      :items="mediaItems"
+      :loading="mediaLoading"
+      :headline="mediaGalleryHeadline"
+      :initial-index="galleryInitialIndex"
+      :apartment-id="mediaGalleryTitleRow?.id"
+      :can-upload="canManageApartmentMedia"
+      :can-delete="canManageApartmentMedia"
+      :can-set-primary="canLoadOwnerSensitive"
+      @close="closeMediaGallery"
+      @uploaded="onApartmentMediaUploaded"
+      @deleted="onApartmentMediaDeleted"
+      @primary-set="onApartmentMediaPrimarySet"
+    />
   </div>
 </template>

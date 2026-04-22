@@ -19,6 +19,8 @@ export interface ApartmentListItemDto {
   status?: string
   createdAt?: string
   updatedAt?: string
+  /** Presigned GET ảnh/video primary (list); null nếu chưa chọn. */
+  primaryMediaUrl?: string | null
 }
 
 export interface PageResultApartmentListItemDto {
@@ -35,12 +37,31 @@ export interface ApartmentAdminDto extends ApartmentListItemDto {
   ownerContact?: string | null
   source?: string | null
   note?: string | null
+  media?: ApartmentMediaItemDto[]
 }
 
 /** GET /apartments/{id}/owner-info — chỉ SĐT chủ & nguồn; ADMIN/MANAGER. */
 export interface ApartmentOwnerInfoDto {
   ownerPhone?: string | null
   source?: string | null
+}
+
+/** GET /apartments/{id}/media — url/thumbnailUrl có thể là presigned (MinIO/S3). */
+export interface ApartmentMediaItemDto {
+  id?: string
+  url: string
+  /** IMAGE | VIDEO | FILE … (backend). */
+  type?: string
+  order?: number
+  primary?: boolean
+  title?: string | null
+  thumbnailUrl?: string | null
+}
+export interface UploadApartmentMediaParams {
+  file: File
+  mediaType?: 'IMAGE' | 'VIDEO' | 'FILE'
+  primary?: boolean
+  displayOrder?: number
 }
 
 /** PATCH /apartments/{id}/status */
