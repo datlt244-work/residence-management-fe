@@ -53,16 +53,34 @@ function goNext() {
   index.value = (index.value + 1) % props.items.length
 }
 
+function mediaTypeUpper(item: ApartmentMediaItemDto | undefined) {
+  return String(item?.type ?? '').toUpperCase()
+}
+
 function isVideo(item: ApartmentMediaItemDto | undefined) {
   if (!item) return false
-  if (item.kind === 'VIDEO') return true
+  const t = mediaTypeUpper(item)
+  if (t === 'VIDEO' || t.includes('VIDEO')) return true
   return /\.(mp4|webm|ogg)(\?.*)?$/i.test(item.url)
+}
+
+function isLikelyImage(item: ApartmentMediaItemDto | undefined) {
+  if (!item || isVideo(item)) return false
+  const t = mediaTypeUpper(item)
+  if (t === 'IMAGE' || t.includes('IMAGE')) return true
+  if (t.includes('FILE')) return false
+  return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(item.url)
 }
 
 function thumbSrc(item: ApartmentMediaItemDto) {
   if (item.thumbnailUrl) return item.thumbnailUrl
-  if (!isVideo(item)) return item.url
+  if (isLikelyImage(item)) return item.url
+  if (!isVideo(item) && !mediaTypeUpper(item).includes('FILE')) return item.url
   return ''
+}
+
+function thumbKey(item: ApartmentMediaItemDto, i: number) {
+  return item.id ?? `${item.url}-${i}`
 }
 
 const current = computed(() => props.items[index.value])
@@ -179,12 +197,24 @@ async function shareCurrent() {
               :src="current.url"
             />
             <img
-              v-else-if="current"
+              v-else-if="current && isLikelyImage(current)"
               :key="'i-' + current.url"
               class="max-h-[min(70dvh,663px)] w-auto max-w-full rounded-lg object-contain shadow-[0_32px_64px_rgba(0,0,0,0.5)]"
               :alt="current.title || 'Ảnh căn hộ'"
               :src="current.url"
             />
+            <a
+              v-else-if="current"
+              :key="'f-' + current.url"
+              class="flex max-h-[min(70dvh,663px)] min-h-[200px] max-w-lg flex-col items-center justify-center gap-4 rounded-lg border border-white/15 bg-white/5 p-10 text-center text-white shadow-lg transition-colors hover:bg-white/10"
+              :href="current.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="material-symbols-outlined text-5xl text-white/90">description</span>
+              <span class="text-sm font-semibold">Mở tệp trong tab mới</span>
+              <span v-if="current.title" class="max-w-full truncate text-xs text-white/70">{{ current.title }}</span>
+            </a>
             <div
               v-if="current?.title"
               class="absolute bottom-4 left-1/2 max-w-[90%] -translate-x-1/2 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-center text-sm font-medium text-white/90 backdrop-blur-lg md:bottom-6"
@@ -214,7 +244,7 @@ async function shareCurrent() {
         <div ref="thumbStripRef" class="mx-auto flex max-w-7xl items-center justify-center gap-3 md:gap-4">
           <button
             v-for="(item, i) in items"
-            :key="i"
+            :key="thumbKey(item, i)"
             type="button"
             :data-thumb-idx="i"
             class="relative shrink-0 overflow-hidden rounded-xl border-2 transition-all focus:outline-none focus:ring-2 focus:ring-primary/80"
@@ -239,12 +269,12 @@ async function shareCurrent() {
               >
                 <span class="material-symbols-outlined text-3xl text-white/90">smart_display</span>
               </div>
-              <img
+              <div
                 v-else
-                class="h-full w-full object-cover"
-                :alt="item.title || ''"
-                :src="item.url"
-              />
+                class="flex h-full w-full items-center justify-center bg-primary-container/30"
+              >
+                <span class="material-symbols-outlined text-2xl text-white/90">description</span>
+              </div>
               <div
                 v-if="isVideo(item)"
                 class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30"

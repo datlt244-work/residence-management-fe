@@ -9,6 +9,7 @@ import {
   getApartmentDetail,
   getApartmentOwnerInfo,
   listApartments,
+  listApartmentMedia,
   moveApartments,
   updateApartment,
 } from '@/services/apartment.service'
@@ -21,25 +22,6 @@ import type {
   UpdateApartmentCommand,
 } from '@/types/apartment'
 import type { ProjectManagementSidebarDto } from '@/types/project'
-
-/** Giao diện mẫu — thay bằng dữ liệu từ API khi backend có GET /apartments/{id}/media. */
-const DEMO_APARTMENT_MEDIA: ApartmentMediaItemDto[] = [
-  { url: 'https://picsum.photos/seed/rm-living/1200/900', kind: 'IMAGE', title: 'Phòng khách' },
-  { url: 'https://picsum.photos/seed/rm-kitchen/1200/900', kind: 'IMAGE', title: 'Nhà bếp' },
-  { url: 'https://picsum.photos/seed/rm-bed/1200/900', kind: 'IMAGE', title: 'Phòng ngủ' },
-  {
-    url: 'https://www.w3schools.com/html/mov_bbb.mp4',
-    kind: 'VIDEO',
-    title: 'Video căn mẫu',
-    thumbnailUrl: 'https://picsum.photos/seed/rm-vid/800/600',
-  },
-  { url: 'https://picsum.photos/seed/rm-bath/1200/900', kind: 'IMAGE', title: 'Phòng tắm' },
-  { url: 'https://picsum.photos/seed/rm-view/1200/900', kind: 'IMAGE', title: 'View ban công' },
-  { url: 'https://picsum.photos/seed/rm-hall/1200/900', kind: 'IMAGE', title: 'Hành lang' },
-  { url: 'https://picsum.photos/seed/rm-dining/1200/900', kind: 'IMAGE', title: 'Khu ăn' },
-  { url: 'https://picsum.photos/seed/rm-study/1200/900', kind: 'IMAGE', title: 'Làm việc tại nhà' },
-  { url: 'https://picsum.photos/seed/rm-extra/1200/900', kind: 'IMAGE', title: 'Không gian phụ' },
-]
 
 const toast = useToast()
 const { confirm } = useConfirm()
@@ -92,8 +74,9 @@ const ownerContactDraft = ref('')
 const sourceDraft = ref('')
 const apartmentSaving = ref(false)
 
-/** Ảnh / video — mở từ thẻ danh sách (dữ liệu mẫu, chưa API). */
+/** Ảnh / video — GET /apartments/{id}/media, mở từ thẻ danh sách. */
 const mediaItems = ref<ApartmentMediaItemDto[]>([])
+const mediaLoading = ref(false)
 const showMediaGallery = ref(false)
 const galleryInitialIndex = ref(0)
 const mediaGalleryTitleRow = ref<ApartmentListItemDto | null>(null)
@@ -212,19 +195,26 @@ function displayField(v: string | null | undefined) {
   return v
 }
 
-function applyDemoApartmentMedia() {
-  mediaItems.value = DEMO_APARTMENT_MEDIA.map((m) => ({ ...m }))
-}
-
-function openApartmentMediaFromList(apt: ApartmentListItemDto, startIndex = 0) {
+async function openApartmentMediaFromList(apt: ApartmentListItemDto, startIndex = 0) {
   mediaGalleryTitleRow.value = apt
-  applyDemoApartmentMedia()
   galleryInitialIndex.value = startIndex
   showMediaGallery.value = true
+  mediaLoading.value = true
+  mediaItems.value = []
+  try {
+    mediaItems.value = await listApartmentMedia(apt.id)
+  } catch (e) {
+    showMediaGallery.value = false
+    mediaGalleryTitleRow.value = null
+    toast.error(e instanceof Error ? e.message : 'Không tải được ảnh & video căn hộ.')
+  } finally {
+    mediaLoading.value = false
+  }
 }
 
 function closeMediaGallery() {
   showMediaGallery.value = false
+  mediaLoading.value = false
   mediaItems.value = []
   mediaGalleryTitleRow.value = null
 }
@@ -1117,7 +1107,7 @@ onMounted(async () => {
     <ApartmentMediaGallery
       :show="showMediaGallery"
       :items="mediaItems"
-      :loading="false"
+      :loading="mediaLoading"
       :headline="mediaGalleryHeadline"
       :initial-index="galleryInitialIndex"
       @close="closeMediaGallery"

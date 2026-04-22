@@ -2,6 +2,7 @@ import { apiFetch, parseJsonResponse } from '@/utils/http'
 import type {
   ApartmentAdminDto,
   ApartmentListItemDto,
+  ApartmentMediaItemDto,
   ApartmentOwnerInfoDto,
   BulkDeleteApartmentsCommand,
   BulkDeleteApartmentsResultDto,
@@ -40,6 +41,17 @@ export async function getApartmentDetail(id: string): Promise<ApartmentAdminDto>
   const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`)
   const json = await parseJsonResponse<ApartmentAdminDto>(res)
   return json.data
+}
+
+export async function listApartmentMedia(id: string): Promise<ApartmentMediaItemDto[]> {
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/media`)
+  const json = await parseJsonResponse<ApartmentMediaItemDto[]>(res)
+  const list = Array.isArray(json.data) ? json.data : []
+  return [...list].sort((a, b) => {
+    if (a.primary && !b.primary) return -1
+    if (!a.primary && b.primary) return 1
+    return (a.order ?? 0) - (b.order ?? 0)
+  })
 }
 
 export async function updateApartment(id: string, body: UpdateApartmentCommand): Promise<ApartmentAdminDto> {

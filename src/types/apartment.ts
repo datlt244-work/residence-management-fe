@@ -44,10 +44,14 @@ export interface ApartmentOwnerInfoDto {
   source?: string | null
 }
 
-/** Ảnh / video căn — GET /apartments/{id}/media hoặc kèm trong chi tiết. */
+/** GET /apartments/{id}/media — url/thumbnailUrl có thể là presigned (MinIO/S3). */
 export interface ApartmentMediaItemDto {
+  id?: string
   url: string
-  kind: 'IMAGE' | 'VIDEO'
+  /** IMAGE | VIDEO | FILE … (backend). */
+  type?: string
+  order?: number
+  primary?: boolean
   title?: string | null
   thumbnailUrl?: string | null
 }
