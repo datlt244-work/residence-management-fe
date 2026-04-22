@@ -11,6 +11,7 @@ import type {
   PageResultApartmentListItemDto,
   UpdateApartmentCommand,
   UpdateApartmentStatusCommand,
+  UploadApartmentMediaParams,
 } from '@/types/apartment'
 
 export interface ListApartmentsParams {
@@ -52,6 +53,29 @@ export async function listApartmentMedia(id: string): Promise<ApartmentMediaItem
     if (!a.primary && b.primary) return 1
     return (a.order ?? 0) - (b.order ?? 0)
   })
+}
+
+export async function uploadApartmentMedia(
+  id: string,
+  params: UploadApartmentMediaParams,
+): Promise<ApartmentMediaItemDto> {
+  const fd = new FormData()
+  fd.append('file', params.file)
+  if (params.mediaType) {
+    fd.append('mediaType', params.mediaType)
+  }
+  if (params.primary === true) {
+    fd.append('primary', 'true')
+  }
+  if (params.displayOrder != null) {
+    fd.append('displayOrder', String(params.displayOrder))
+  }
+  const res = await apiFetch(`/apartments/${encodeURIComponent(id)}/media`, {
+    method: 'POST',
+    body: fd,
+  })
+  const json = await parseJsonResponse<ApartmentMediaItemDto>(res)
+  return json.data
 }
 
 export async function updateApartment(id: string, body: UpdateApartmentCommand): Promise<ApartmentAdminDto> {

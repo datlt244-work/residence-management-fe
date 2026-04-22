@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
+import { uploadApartmentMedia } from '@/services/apartment.service'
 import type { ApartmentMediaItemDto } from '@/types/apartment'
 
 const props = withDefaults(
@@ -10,20 +11,53 @@ const props = withDefaults(
     loading?: boolean
     headline?: string
     initialIndex?: number
+    apartmentId?: string | null
+    canUpload?: boolean
   }>(),
-  { loading: false, headline: '', initialIndex: 0 },
+  { loading: false, headline: '', initialIndex: 0, apartmentId: null, canUpload: false },
 )
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{
+  close: []
+  uploaded: [item: ApartmentMediaItemDto]
+}>()
 const toast = useToast()
 
 const index = ref(0)
 const thumbStripRef = ref<HTMLElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const uploadBusy = ref(false)
+
+/** Sau khi chọn file: form primary + displayOrder rồi mới POST. */
+const showUploadOptionsDialog = ref(false)
+const pendingFile = ref<File | null>(null)
+const uploadPrimary = ref(false)
+const uploadDisplayOrderInput = ref('')
+
+const showUpload = computed(
+  () => Boolean(props.canUpload && props.apartmentId && !props.loading),
+)
+
+watch(
+  () => props.show,
+  (open) => {
+    if (!open) {
+      showUploadOptionsDialog.value = false
+      pendingFile.value = null
+      uploadPrimary.value = false
+      uploadDisplayOrderInput.value = ''
+    }
+  },
+)
 
 watch(
   () => [props.show, props.initialIndex, props.items] as const,
   () => {
-    if (!props.show || !props.items.length) return
+    if (!props.show) return
+    if (!props.items.length) {
+      index.value = 0
+      return
+    }
     const max = props.items.length - 1
     index.value = Math.min(Math.max(props.initialIndex ?? 0, 0), max)
     void nextTick(() => scrollActiveThumb())
@@ -89,6 +123,13 @@ const counterLabel = computed(() => (count.value ? `${index.value + 1} / ${count
 
 function onKeydown(e: KeyboardEvent) {
   if (!props.show) return
+  if (showUploadOptionsDialog.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeUploadOptionsDialog()
+    }
+    return
+  }
   if (e.key === 'Escape') {
     e.preventDefault()
     close()
@@ -123,6 +164,74 @@ async function shareCurrent() {
     }
   }
 }
+
+function triggerUpload() {
+  if (showUploadOptionsDialog.value) return
+  fileInputRef.value?.click()
+}
+
+function closeUploadOptionsDialog() {
+  showUploadOptionsDialog.value = false
+  pendingFile.value = null
+  uploadPrimary.value = false
+  uploadDisplayOrderInput.value = ''
+}
+
+function displayOrderInputTrimmed(): string {
+  // `v-model` trên `<input type="number">` có thể là number — không có .trim()
+  return String(uploadDisplayOrderInput.value ?? '').trim()
+}
+
+function parseDisplayOrderForUpload(): number | undefined {
+  const t = displayOrderInputTrimmed()
+  if (t === '') return undefined
+  const n = Number(t)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+    toast.error('Thứ tự hiển thị phải là số nguyên ≥ 0 hoặc để trống.')
+    return undefined
+  }
+  return n
+}
+
+function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  const aid = props.apartmentId
+  if (!file || !aid) return
+  pendingFile.value = file
+  uploadPrimary.value = false
+  uploadDisplayOrderInput.value = ''
+  showUploadOptionsDialog.value = true
+}
+
+async function confirmUploadWithOptions() {
+  const file = pendingFile.value
+  const aid = props.apartmentId
+  if (!file || !aid) {
+    closeUploadOptionsDialog()
+    return
+  }
+  const displayOrder = parseDisplayOrderForUpload()
+  if (displayOrderInputTrimmed() !== '' && displayOrder === undefined) {
+    return
+  }
+  uploadBusy.value = true
+  try {
+    const item = await uploadApartmentMedia(aid, {
+      file,
+      primary: uploadPrimary.value ? true : undefined,
+      displayOrder,
+    })
+    closeUploadOptionsDialog()
+    emit('uploaded', item)
+    toast.success('Đã tải lên media.')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Tải lên thất bại.')
+  } finally {
+    uploadBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -149,6 +258,16 @@ async function shareCurrent() {
         </div>
         <div class="flex shrink-0 items-center gap-2 sm:gap-3">
           <button
+            v-if="showUpload"
+            type="button"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-white transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 sm:h-12 sm:w-12"
+            aria-label="Tải lên ảnh hoặc video"
+            :disabled="uploadBusy"
+            @click="triggerUpload"
+          >
+            <span class="material-symbols-outlined text-[22px]">add_photo_alternate</span>
+          </button>
+          <button
             type="button"
             class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-white transition-all hover:bg-white/10 active:scale-95 sm:h-12 sm:w-12"
             aria-label="Chia sẻ hoặc copy liên kết"
@@ -172,7 +291,18 @@ async function shareCurrent() {
       <div class="group relative flex min-h-0 flex-1 items-center justify-center px-4 md:px-12">
         <div v-if="loading && !items.length" class="py-16 text-center text-white/70">Đang tải media…</div>
         <template v-else-if="!items.length">
-          <p class="px-4 text-center text-white/80">Chưa có ảnh hoặc video cho căn này.</p>
+          <div class="flex flex-col items-center px-4">
+            <p class="text-center text-white/80">Chưa có ảnh hoặc video cho căn này.</p>
+            <button
+              v-if="showUpload"
+              type="button"
+              class="mt-5 rounded-full bg-primary px-6 py-2.5 text-sm font-bold text-on-primary shadow-lg transition-opacity hover:opacity-95 disabled:opacity-50"
+              :disabled="uploadBusy"
+              @click="triggerUpload"
+            >
+              {{ uploadBusy ? 'Đang tải lên…' : 'Tải lên ảnh / video' }}
+            </button>
+          </div>
         </template>
         <template v-else>
           <div class="absolute left-2 z-10 md:left-8">
@@ -287,6 +417,85 @@ async function shareCurrent() {
       </div>
 
       <p class="sr-only">Nhấn Escape để đóng. Phím mũi tên trái phải để xem ảnh hoặc video trước / sau.</p>
+
+      <input
+        ref="fileInputRef"
+        type="file"
+        class="sr-only"
+        accept="image/*,video/*"
+        tabindex="-1"
+        @change="onFileSelected"
+      />
+    </div>
+
+    <!-- Tuỳ chọn upload: primary + displayOrder -->
+    <div
+      v-if="show && showUploadOptionsDialog && pendingFile"
+      class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upload-media-dialog-title"
+      @click.self="closeUploadOptionsDialog"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-outline-variant/20 bg-surface-container-lowest p-6 text-on-surface shadow-xl"
+        @click.stop
+      >
+        <h3 id="upload-media-dialog-title" class="font-headline text-lg font-bold text-primary">
+          Tải lên ảnh / video
+        </h3>
+        <p class="mt-1 truncate text-sm text-on-surface-variant" :title="pendingFile.name">
+          {{ pendingFile.name }}
+        </p>
+
+        <div class="mt-4 space-y-4">
+          <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-outline-variant/20 bg-surface-container-low/80 p-3">
+            <input
+              v-model="uploadPrimary"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 shrink-0 rounded border-outline-variant text-primary focus:ring-primary/40"
+            />
+            <span class="text-sm">
+              <span class="font-semibold text-on-surface">Ảnh hoặc video chính</span>
+              <span class="mt-0.5 block text-xs text-on-surface-variant">Đánh dấu primary (mặc định không).</span>
+            </span>
+          </label>
+
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              Thứ tự hiển thị (displayOrder)
+            </label>
+            <input
+              v-model="uploadDisplayOrderInput"
+              type="number"
+              min="0"
+              step="1"
+              class="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="Để trống — server gán sau mục cuối"
+            />
+            <p class="mt-1 text-[11px] text-on-surface-variant">Số nguyên ≥ 0. Trống = thêm sau mục có order lớn nhất.</p>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-lg border border-outline-variant/40 px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low disabled:opacity-50"
+            :disabled="uploadBusy"
+            @click="closeUploadOptionsDialog"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            class="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary disabled:opacity-50"
+            :disabled="uploadBusy"
+            @click="confirmUploadWithOptions"
+          >
+            {{ uploadBusy ? 'Đang tải lên…' : 'Tải lên' }}
+          </button>
+        </div>
+      </div>
     </div>
   </Teleport>
 </template>

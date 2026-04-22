@@ -219,6 +219,18 @@ function closeMediaGallery() {
   mediaGalleryTitleRow.value = null
 }
 
+async function onApartmentMediaUploaded(created: ApartmentMediaItemDto) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    mediaItems.value = await listApartmentMedia(id)
+    const i = created.id ? mediaItems.value.findIndex((x) => x.id === created.id) : -1
+    galleryInitialIndex.value = i >= 0 ? i : Math.max(0, mediaItems.value.length - 1)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+  }
+}
+
 function clearEditDrafts() {
   codeDraft.value = ''
   statusDraft.value = ''
@@ -1110,7 +1122,10 @@ onMounted(async () => {
       :loading="mediaLoading"
       :headline="mediaGalleryHeadline"
       :initial-index="galleryInitialIndex"
+      :apartment-id="mediaGalleryTitleRow?.id"
+      :can-upload="canLoadOwnerSensitive"
       @close="closeMediaGallery"
+      @uploaded="onApartmentMediaUploaded"
     />
   </div>
 </template>

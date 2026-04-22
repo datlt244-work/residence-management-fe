@@ -55,6 +55,12 @@ export interface ApartmentMediaItemDto {
   title?: string | null
   thumbnailUrl?: string | null
 }
+export interface UploadApartmentMediaParams {
+  file: File
+  mediaType?: 'IMAGE' | 'VIDEO' | 'FILE'
+  primary?: boolean
+  displayOrder?: number
+}
 
 /** PATCH /apartments/{id}/status */
 export interface UpdateApartmentStatusCommand {
