@@ -78,6 +78,19 @@ export async function uploadApartmentMedia(
   return json.data
 }
 
+/** DELETE /api/media/{mediaId} — OpenAPI `deleteApartmentMedia`; ADMIN/MANAGER (theo backend). */
+export async function deleteApartmentMedia(mediaId: string): Promise<void> {
+  const res = await apiFetch(`/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE' })
+  await parseJsonResponse<void>(res)
+}
+
+/** PATCH /api/media/{mediaId}/primary — OpenAPI `setApartmentMediaPrimary`; ADMIN/MANAGER (theo backend). */
+export async function setApartmentMediaPrimary(mediaId: string): Promise<ApartmentMediaItemDto> {
+  const res = await apiFetch(`/media/${encodeURIComponent(mediaId)}/primary`, { method: 'PATCH' })
+  const json = await parseJsonResponse<ApartmentMediaItemDto>(res)
+  return json.data
+}
+
 export async function updateApartment(id: string, body: UpdateApartmentCommand): Promise<ApartmentAdminDto> {
   const res = await apiFetch(`/apartments/${encodeURIComponent(id)}`, {
     method: 'PUT',

@@ -28,8 +28,14 @@ const { confirm } = useConfirm()
 const auth = useAuthStore()
 
 const canLoadOwnerSensitive = computed(() => {
-  const r = auth.user?.role?.toUpperCase()
+  const r = auth.user?.role?.trim().toUpperCase()
   return r === 'ADMIN' || r === 'MANAGER'
+})
+
+/** Thêm / xóa ảnh & video căn — cùng nhóm được vào trang tồn kho (STAFF gồm). */
+const canManageApartmentMedia = computed(() => {
+  const r = auth.user?.role?.trim().toUpperCase()
+  return r === 'ADMIN' || r === 'MANAGER' || r === 'STAFF'
 })
 
 const loading = ref(true)
@@ -226,6 +232,30 @@ async function onApartmentMediaUploaded(created: ApartmentMediaItemDto) {
     mediaItems.value = await listApartmentMedia(id)
     const i = created.id ? mediaItems.value.findIndex((x) => x.id === created.id) : -1
     galleryInitialIndex.value = i >= 0 ? i : Math.max(0, mediaItems.value.length - 1)
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+  }
+}
+
+async function onApartmentMediaDeleted(removedIndex: number) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    mediaItems.value = await listApartmentMedia(id)
+    const len = mediaItems.value.length
+    galleryInitialIndex.value = len ? Math.min(Math.max(removedIndex, 0), len - 1) : 0
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
+  }
+}
+
+async function onApartmentMediaPrimarySet(mediaId: string) {
+  const id = mediaGalleryTitleRow.value?.id
+  if (!id) return
+  try {
+    mediaItems.value = await listApartmentMedia(id)
+    const i = mediaItems.value.findIndex((x) => x.id === mediaId)
+    galleryInitialIndex.value = i >= 0 ? i : 0
   } catch (e) {
     toast.error(e instanceof Error ? e.message : 'Không làm mới được danh sách media.')
   }
@@ -1123,9 +1153,13 @@ onMounted(async () => {
       :headline="mediaGalleryHeadline"
       :initial-index="galleryInitialIndex"
       :apartment-id="mediaGalleryTitleRow?.id"
-      :can-upload="canLoadOwnerSensitive"
+      :can-upload="canManageApartmentMedia"
+      :can-delete="canManageApartmentMedia"
+      :can-set-primary="canLoadOwnerSensitive"
       @close="closeMediaGallery"
       @uploaded="onApartmentMediaUploaded"
+      @deleted="onApartmentMediaDeleted"
+      @primary-set="onApartmentMediaPrimarySet"
     />
   </div>
 </template>

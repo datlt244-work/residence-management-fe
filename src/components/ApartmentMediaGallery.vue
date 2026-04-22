@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useConfirm } from '@/composables/useConfirm'
 import { useToast } from '@/composables/useToast'
-import { uploadApartmentMedia } from '@/services/apartment.service'
+import { deleteApartmentMedia, setApartmentMediaPrimary, uploadApartmentMedia } from '@/services/apartment.service'
 import type { ApartmentMediaItemDto } from '@/types/apartment'
 
 const props = withDefaults(
@@ -13,20 +14,38 @@ const props = withDefaults(
     initialIndex?: number
     apartmentId?: string | null
     canUpload?: boolean
+    canDelete?: boolean
+    /** Đặt media chính (PATCH /media/.../primary) — ADMIN/MANAGER. */
+    canSetPrimary?: boolean
   }>(),
-  { loading: false, headline: '', initialIndex: 0, apartmentId: null, canUpload: false },
+  {
+    loading: false,
+    headline: '',
+    initialIndex: 0,
+    apartmentId: null,
+    canUpload: false,
+    canDelete: false,
+    canSetPrimary: false,
+  },
 )
 
 const emit = defineEmits<{
   close: []
   uploaded: [item: ApartmentMediaItemDto]
+  /** Chỉ số mục đã xóa (để parent chỉnh `initialIndex` sau khi refetch). */
+  deleted: [removedIndex: number]
+  /** Sau PATCH primary — refetch danh sách, giữ đúng mục (sort có thể đổi). */
+  'primary-set': [mediaId: string]
 }>()
 const toast = useToast()
+const { confirm } = useConfirm()
 
 const index = ref(0)
 const thumbStripRef = ref<HTMLElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const uploadBusy = ref(false)
+const deleteBusy = ref(false)
+const primaryBusy = ref(false)
 
 /** Sau khi chọn file: form primary + displayOrder rồi mới POST. */
 const showUploadOptionsDialog = ref(false)
@@ -65,6 +84,19 @@ watch(
 )
 
 watch(index, () => void nextTick(() => scrollActiveThumb()))
+
+watch(
+  () => props.items.length,
+  (len) => {
+    if (!props.show) return
+    if (!len) {
+      index.value = 0
+      return
+    }
+    const max = len - 1
+    if (index.value > max) index.value = max
+  },
+)
 
 function scrollActiveThumb() {
   const strip = thumbStripRef.value
@@ -120,6 +152,32 @@ function thumbKey(item: ApartmentMediaItemDto, i: number) {
 const current = computed(() => props.items[index.value])
 const count = computed(() => props.items.length)
 const counterLabel = computed(() => (count.value ? `${index.value + 1} / ${count.value}` : '0 / 0'))
+
+const showDeleteCurrent = computed(() =>
+  Boolean(
+    props.canDelete &&
+      props.apartmentId &&
+      !props.loading &&
+      props.items.length > 0 &&
+      current.value?.id,
+  ),
+)
+
+const showSetPrimaryControl = computed(() =>
+  Boolean(
+    props.canSetPrimary &&
+      props.apartmentId &&
+      !props.loading &&
+      props.items.length > 0 &&
+      current.value?.id,
+  ),
+)
+
+const currentIsPrimary = computed(() => Boolean(current.value?.primary))
+
+const canClickSetPrimary = computed(
+  () => showSetPrimaryControl.value && !currentIsPrimary.value,
+)
 
 function onKeydown(e: KeyboardEvent) {
   if (!props.show) return
@@ -205,6 +263,47 @@ function onFileSelected(e: Event) {
   showUploadOptionsDialog.value = true
 }
 
+async function setCurrentMediaPrimary() {
+  const item = current.value
+  const mid = item?.id
+  if (!mid || item?.primary) return
+  primaryBusy.value = true
+  try {
+    await setApartmentMediaPrimary(mid)
+    emit('primary-set', mid)
+    toast.success('Đã đặt làm ảnh / video chính.')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Không đặt được media chính.')
+  } finally {
+    primaryBusy.value = false
+  }
+}
+
+async function confirmDeleteCurrentMedia() {
+  const item = current.value
+  const mid = item?.id
+  if (!mid) {
+    if (item) toast.error('Mục media không có id — không xóa được qua API.')
+    return
+  }
+  const ok = await confirm({
+    title: 'Xóa ảnh / video',
+    message: 'Xóa mục đang xem khỏi căn hộ? Thao tác không hoàn tác.',
+  })
+  if (!ok) return
+  deleteBusy.value = true
+  try {
+    const removedIndex = index.value
+    await deleteApartmentMedia(mid)
+    emit('deleted', removedIndex)
+    toast.success('Đã xóa media.')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Xóa thất bại.')
+  } finally {
+    deleteBusy.value = false
+  }
+}
+
 async function confirmUploadWithOptions() {
   const file = pendingFile.value
   const aid = props.apartmentId
@@ -262,10 +361,42 @@ async function confirmUploadWithOptions() {
             type="button"
             class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-white transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 sm:h-12 sm:w-12"
             aria-label="Tải lên ảnh hoặc video"
-            :disabled="uploadBusy"
+            :disabled="uploadBusy || deleteBusy || primaryBusy"
             @click="triggerUpload"
           >
             <span class="material-symbols-outlined text-[22px]">add_photo_alternate</span>
+          </button>
+          <button
+            v-if="showSetPrimaryControl"
+            type="button"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 transition-all active:scale-95 disabled:opacity-50 sm:h-12 sm:w-12"
+            :class="
+              currentIsPrimary
+                ? 'cursor-default text-amber-300/90'
+                : 'text-white hover:bg-white/10'
+            "
+            :aria-label="
+              currentIsPrimary ? 'Đang là media chính (ảnh bìa danh sách)' : 'Đặt làm ảnh hoặc video chính'
+            "
+            :disabled="!canClickSetPrimary || uploadBusy || deleteBusy || primaryBusy"
+            @click="setCurrentMediaPrimary"
+          >
+            <span
+              class="material-symbols-outlined text-[22px]"
+              :class="{ 'media-gallery-star--filled': currentIsPrimary }"
+            >
+              star
+            </span>
+          </button>
+          <button
+            v-if="showDeleteCurrent"
+            type="button"
+            class="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 text-error transition-all hover:bg-error-container/30 active:scale-95 disabled:opacity-50 sm:h-12 sm:w-12"
+            aria-label="Xóa ảnh hoặc video đang xem"
+            :disabled="uploadBusy || deleteBusy || primaryBusy"
+            @click="confirmDeleteCurrentMedia"
+          >
+            <span class="material-symbols-outlined text-[22px]">delete</span>
           </button>
           <button
             type="button"
@@ -499,3 +630,9 @@ async function confirmUploadWithOptions() {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.media-gallery-star--filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400;
+}
+</style>
