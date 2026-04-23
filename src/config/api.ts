@@ -2,7 +2,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undef
 
 export const apiEndpoints = {
   auth: {
-    login: `${API_BASE_URL}/auth/admin/login`,
+    login: `${API_BASE_URL}/auth/login`,
     forgotPassword: `${API_BASE_URL}/auth/forgot-password`,
   },
 } as const
